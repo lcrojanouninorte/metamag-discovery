@@ -52,15 +52,22 @@ import {
   CommercialProposal,
   CommercialService,
   CommercialServiceLine,
+  CommercialServicePricing,
   CommercialRoleId,
+  CommercialServiceId,
   ProposalOptionId,
   ProposalRevision,
   ProposalStatus,
+  ServiceActivity,
+  TaxTreatment,
+  COMMERCIAL_PROFILES,
   createCommercialProposal,
   createProposalRevision,
+  migrateCommercialProposal,
   proposalStatusLabel,
 } from '../core/commercial-model';
 import { COMMERCIAL_SERVICES, getCommercialService } from '../core/commercial-catalog';
+import { exportCommercialConfiguration as serializeCommercialConfiguration, parseCommercialConfiguration } from '../core/commercial-config';
 import { calculateAlternative, EstimateScenario, HourSummary } from '../core/commercial-calculator';
 import { createClientProposalDocument } from '../core/commercial-report';
 
@@ -83,9 +90,13 @@ export class SessionComponent {
   readonly formDefinition = computed(() => this.session()?.formSnapshot ?? this.forms.form());
   readonly session = computed(() => this.store.sessions().find((item) => item.id === this.sessionId) ?? null);
   readonly commercialCatalog = COMMERCIAL_SERVICES;
+  readonly commercialProfiles = COMMERCIAL_PROFILES;
   readonly commercialCatalogVersion = COMMERCIAL_CATALOG_VERSION;
   readonly estimateScenarios = ['optimistic', 'base', 'conservative'] as const;
-  readonly commercialProposal = computed(() => this.session()?.commercialProposal ?? null);
+  readonly commercialProposal = computed(() => {
+    const proposal = this.session()?.commercialProposal;
+    return proposal ? migrateCommercialProposal(proposal) : null;
+  });
   readonly proposalApprovedForSharing = computed(() => {
     const proposal = this.commercialProposal();
     return !!proposal?.internalApproval.approved &&
@@ -588,7 +599,7 @@ export class SessionComponent {
     const session = this.session();
     if (!session) return;
     const updated = session.commercialProposal
-      ? session
+      ? { ...session, commercialProposal: migrateCommercialProposal(session.commercialProposal) }
       : { ...session, commercialProposal: createCommercialProposal() };
     try {
       await this.store.save(updated);
@@ -601,7 +612,9 @@ export class SessionComponent {
   updateProposal(patch: Partial<CommercialProposal>): void {
     const session = this.session();
     if (!session) return;
-    const current = session.commercialProposal ?? createCommercialProposal();
+    const current = session.commercialProposal
+      ? migrateCommercialProposal(session.commercialProposal)
+      : createCommercialProposal();
     const workflowTransition = patch.status !== undefined;
     this.persist({
       ...session,
@@ -611,7 +624,9 @@ export class SessionComponent {
         updatedAt: new Date().toISOString(),
         status: workflowTransition ? patch.status! : 'estimation_incomplete',
         internalApproval: workflowTransition
-          ? patch.internalApproval ?? current.internalApproval
+          ? ['internally_approved', 'shared_with_client', 'accepted', 'rejected'].includes(patch.status!)
+            ? patch.internalApproval ?? current.internalApproval
+            : { approved: false, note: '', approvedAt: '' }
           : { ...current.internalApproval, approved: false, approvedAt: '' },
       },
     });
@@ -634,7 +649,19 @@ export class SessionComponent {
   addCommercialService(serviceId: string): void {
     const service = COMMERCIAL_SERVICES.find((item) => item.id === serviceId);
     const active = this.activeAlternative();
-    if (!service || !active || active.lines.some((line) => line.serviceId === service.id)) return;
+    const proposal = this.commercialProposal();
+    const pricing = proposal?.servicePricing[serviceId as CommercialServiceId];
+    if (!service || !active || !pricing || active.lines.some((line) => line.serviceId === service.id)) return;
+    const activitiesEstimate: ServiceActivity[] = Object.entries(pricing.hoursByProfile)
+      .filter(([, hours]) => hours !== undefined && hours > 0)
+      .map(([profileId, hours]) => ({
+        id: `reference-${profileId}`,
+        name: `Estimación inicial · ${this.commercialProfileName(profileId)}`,
+        profileId: profileId as CommercialRoleId,
+        hours: { min: hours!, expected: hours!, max: hours! },
+        assumptions: ['Estimación interna inicial y editable; no constituye un compromiso contractual.'],
+        uncertainty: 'high',
+      }));
     const line: CommercialServiceLine = {
       id: crypto.randomUUID(),
       serviceId: service.id,
@@ -642,15 +669,17 @@ export class SessionComponent {
       quantity: service.defaultQuantity,
       priceReviewed: false,
       objective: service.objective,
-      scopeNotes: service.activities.join('\n'),
+      scopeNotes: `${pricing.includedScope}\n${service.activities.join('\n')}`,
       calendarDuration: { ...service.calendarDuration },
       deliverables: structuredClone(service.deliverables),
-      exclusions: [...service.exclusions],
-      activitiesEstimate: structuredClone(service.activitiesEstimate),
-      thirdPartyCostCOP: null,
-      otherDirectCostCOP: null,
-      thirdPartyChargeCOP: null,
-      proposedUnitPriceCOP: null,
+      exclusions: [...pricing.exclusions],
+      activitiesEstimate,
+      thirdPartyCostCOP: 0,
+      otherDirectCostCOP: pricing.estimatedDirectCostCOP,
+      thirdPartyChargeCOP: 0,
+      proposedUnitPriceCOP: pricing.referencePriceCOP,
+      actualHoursByProfile: {},
+      taxTreatment: proposal.settings.taxTreatments[service.id],
       discountEligible: service.discountEligible,
       dependencyNote: '',
     };
@@ -749,15 +778,222 @@ export class SessionComponent {
     });
   }
 
+  updateProfileCommercialRate(profileId: string, value: string): void {
+    const proposal = this.commercialProposal();
+    if (!proposal) return;
+    const cost = this.optionalNumber(value);
+    if (cost !== null && cost < 0) return;
+    this.updateProposal({
+      settings: {
+        ...proposal.settings,
+        profiles: proposal.settings.profiles.map((profile) => profile.id === profileId
+          ? { ...profile, commercialHourlyRateCOP: cost }
+          : profile),
+      },
+    });
+  }
+
   updateCommercialSetting(
-    setting: 'indirectCostPercent' | 'contingencyPercent' | 'targetMarginPercent' | 'minimumAuthorizedMarginPercent' | 'taxPercent',
+    setting: 'indirectCostPercent' | 'contingencyPercent' | 'targetMarginPercent' | 'minimumAuthorizedMarginPercent'
+      | 'defaultDiscountPercent' | 'maximumDiscountPercent' | 'quoteValidityDays' | 'taxPercent' | 'withholdingPercent',
     value: string,
   ): void {
     const proposal = this.commercialProposal();
     if (!proposal) return;
     const number = this.optionalNumber(value);
-    if (number !== null && (number < 0 || number > 99.99)) return;
-    this.updateProposal({ settings: { ...proposal.settings, [setting]: number } });
+    const max = setting === 'quoteValidityDays' ? 365 : 100;
+    if (number !== null && (number < 0 || number > max)) return;
+    if (setting === 'defaultDiscountPercent' && number !== null && number > proposal.settings.maximumDiscountPercent) return;
+    if (setting === 'maximumDiscountPercent' && number !== null && number < proposal.settings.defaultDiscountPercent) return;
+    const defaults: Record<typeof setting, number | null> = {
+      indirectCostPercent: 0,
+      contingencyPercent: 10,
+      targetMarginPercent: 40,
+      minimumAuthorizedMarginPercent: 25,
+      defaultDiscountPercent: 0,
+      maximumDiscountPercent: 15,
+      quoteValidityDays: 15,
+      taxPercent: null,
+      withholdingPercent: null,
+    };
+    const configuredValue = number ?? defaults[setting];
+    const alternatives = proposal.alternatives.map((alternative) => {
+      if (setting === 'defaultDiscountPercent' && alternative.discountPercent === proposal.settings.defaultDiscountPercent) {
+        return { ...alternative, discountPercent: configuredValue ?? 0 };
+      }
+      return alternative;
+    });
+    const validUntil = setting === 'quoteValidityDays' && configuredValue !== null
+      ? (() => {
+        const date = new Date(proposal.createdAt);
+        date.setDate(date.getDate() + configuredValue);
+        return date.toISOString().slice(0, 10);
+      })()
+      : proposal.validUntil;
+    this.updateProposal({
+      ...(setting === 'defaultDiscountPercent' ? { alternatives } : {}),
+      ...(setting === 'quoteValidityDays' ? { validUntil } : {}),
+      settings: {
+        ...proposal.settings,
+        [setting]: configuredValue,
+        ...(setting === 'indirectCostPercent' ? { indirectCostConfigured: number !== null } : {}),
+      },
+    });
+  }
+
+  updateTaxValidation(validated: boolean): void {
+    const proposal = this.commercialProposal();
+    if (proposal) this.updateProposal({
+      settings: { ...proposal.settings, taxValidationStatus: validated ? 'validated' : 'pending' },
+    });
+  }
+
+  updateIndirectCostValidation(configured: boolean): void {
+    const proposal = this.commercialProposal();
+    if (proposal) this.updateProposal({
+      settings: { ...proposal.settings, indirectCostConfigured: configured },
+    });
+  }
+
+  updateTaxTreatment(serviceId: CommercialServiceId, taxTreatment: TaxTreatment): void {
+    const proposal = this.commercialProposal();
+    if (proposal) this.updateProposal({
+      settings: { ...proposal.settings, taxTreatments: { ...proposal.settings.taxTreatments, [serviceId]: taxTreatment } },
+    });
+  }
+
+  updateSuggestedPaymentTerms(value: string): void {
+    const proposal = this.commercialProposal();
+    if (!proposal) return;
+    this.updateProposal({
+      alternatives: proposal.alternatives.map((alternative) => (
+        alternative.paymentTerms === proposal.settings.suggestedPaymentTerms
+          ? { ...alternative, paymentTerms: value }
+          : alternative
+      )),
+      settings: { ...proposal.settings, suggestedPaymentTerms: value },
+    });
+  }
+
+  updateServicePricing(serviceId: CommercialServiceId, patch: Partial<CommercialServicePricing>): void {
+    const proposal = this.commercialProposal();
+    const current = proposal?.servicePricing[serviceId];
+    if (!proposal || !current) return;
+    this.updateProposal({
+      servicePricing: {
+        ...proposal.servicePricing,
+        [serviceId]: { ...current, ...patch, status: 'estimated', lastModified: new Date().toISOString() },
+      },
+    });
+  }
+
+  updateServiceReferencePrice(serviceId: CommercialServiceId, value: string): void {
+    const amount = this.optionalNumber(value);
+    if (amount === null || amount < 0) return;
+    this.updateServicePricing(serviceId, { referencePriceCOP: amount });
+  }
+
+  updateServiceDirectCost(serviceId: CommercialServiceId, value: string): void {
+    const amount = this.optionalNumber(value);
+    if (amount === null || amount < 0) return;
+    this.updateServicePricing(serviceId, { estimatedDirectCostCOP: amount });
+  }
+
+  commercialPricingEstimate(serviceId: CommercialServiceId): {
+    costCOP: number | null;
+    targetPriceCOP: number | null;
+    marginPercent: number | null;
+    provisional: boolean;
+  } {
+    const proposal = this.commercialProposal();
+    const pricing = proposal?.servicePricing[serviceId];
+    if (!proposal || !pricing) return { costCOP: null, targetPriceCOP: null, marginPercent: null, provisional: true };
+    let labor = 0;
+    for (const [profileId, hours] of Object.entries(pricing.hoursByProfile) as [CommercialRoleId, number][]) {
+      const profile = proposal.settings.profiles.find((item) => item.id === profileId);
+      if (!profile || profile.hourlyCostCOP === null) {
+        return { costCOP: null, targetPriceCOP: null, marginPercent: null, provisional: true };
+      }
+      labor += profile.hourlyCostCOP * hours;
+    }
+    const operating = labor + pricing.estimatedDirectCostCOP
+      + labor * proposal.settings.indirectCostPercent / 100;
+    const costCOP = Math.round(operating * (1 + proposal.settings.contingencyPercent / 100));
+    const targetPriceCOP = proposal.settings.targetMarginPercent < 100
+      ? Math.round(costCOP / (1 - proposal.settings.targetMarginPercent / 100))
+      : null;
+    return {
+      costCOP,
+      targetPriceCOP,
+      marginPercent: pricing.referencePriceCOP > 0
+        ? ((pricing.referencePriceCOP - costCOP) / pricing.referencePriceCOP) * 100
+        : null,
+      provisional: !proposal.settings.indirectCostConfigured,
+    };
+  }
+
+  updateServiceHours(serviceId: CommercialServiceId, profileId: CommercialRoleId, value: string): void {
+    const proposal = this.commercialProposal();
+    const pricing = proposal?.servicePricing[serviceId];
+    const hours = this.optionalNumber(value);
+    if (!pricing || hours === null || hours < 0) return;
+    const hoursByProfile = { ...pricing.hoursByProfile };
+    if (hours === 0) delete hoursByProfile[profileId];
+    else hoursByProfile[profileId] = hours;
+    this.updateServicePricing(serviceId, { hoursByProfile });
+  }
+
+  updateServiceScope(serviceId: CommercialServiceId, value: string): void {
+    this.updateServicePricing(serviceId, { includedScope: value });
+  }
+
+  updateServiceUnit(serviceId: CommercialServiceId, value: string): void {
+    this.updateServicePricing(serviceId, { unit: value });
+  }
+
+  updateServiceExclusions(serviceId: CommercialServiceId, value: string): void {
+    this.updateServicePricing(serviceId, { exclusions: value.split(/\r?\n/).map((item) => item.trim()).filter(Boolean) });
+  }
+
+  updateActualHours(lineId: string, profileId: CommercialRoleId, value: string): void {
+    const line = this.activeAlternative()?.lines.find((item) => item.id === lineId);
+    if (!line) return;
+    const hours = this.optionalNumber(value);
+    if (hours !== null && hours < 0) return;
+    const actualHoursByProfile = { ...line.actualHoursByProfile };
+    if (hours === null) delete actualHoursByProfile[profileId];
+    else actualHoursByProfile[profileId] = hours;
+    this.updateCommercialLine(lineId, { actualHoursByProfile });
+  }
+
+  exportCommercialConfiguration(): void {
+    const proposal = this.commercialProposal();
+    if (!proposal) return;
+    this.downloadJson(
+      serializeCommercialConfiguration(proposal),
+      `metamag-configuracion-comercial-${slug(this.session()?.project ?? '')}.json`,
+      true,
+    );
+  }
+
+  async importCommercialConfiguration(event: Event): Promise<void> {
+    const input = event.target as HTMLInputElement;
+    const file = input.files?.[0];
+    input.value = '';
+    const proposal = this.commercialProposal();
+    if (!file || !proposal) return;
+    try {
+      const payload: unknown = JSON.parse(await file.text());
+      const imported = parseCommercialConfiguration(payload);
+      this.updateProposal({
+        settings: imported.settings,
+        servicePricing: imported.servicePricing,
+        status: 'estimation_incomplete',
+      });
+      this.notice = 'Configuración comercial importada y guardada en esta sesión. Verifica los datos tributarios antes de cotizar.';
+    } catch (error) {
+      this.notice = error instanceof Error ? `No se importó la configuración: ${error.message}` : 'No se importó la configuración por un error inesperado.';
+    }
   }
 
   updateCommercialCost(
@@ -794,7 +1030,7 @@ export class SessionComponent {
 
   updateDiscountPercent(value: string): void {
     const discountPercent = Number(value);
-    if (discountPercent === 0 || discountPercent === 10 || discountPercent === 15 || discountPercent === 20) {
+    if (Number.isFinite(discountPercent) && discountPercent >= 0 && discountPercent <= 100) {
       this.updateAlternative({ discountPercent });
     }
   }
@@ -811,9 +1047,20 @@ export class SessionComponent {
     const proposal = this.commercialProposal();
     if (proposal) {
       this.updateProposal({
-        discountApproval: { ...proposal.discountApproval, approved },
+        discountApproval: {
+          ...proposal.discountApproval,
+          approved,
+          declaredAt: approved ? new Date().toISOString() : '',
+        },
       });
     }
+  }
+
+  updateDiscountDeclaration(field: 'responsible' | 'justification', value: string): void {
+    const proposal = this.commercialProposal();
+    if (proposal) this.updateProposal({
+      discountApproval: { ...proposal.discountApproval, [field]: value },
+    });
   }
 
   setInternalApprovalNote(note: string): void {
@@ -835,6 +1082,13 @@ export class SessionComponent {
     return profile?.hourlyCostCOP === null || profile?.hourlyCostCOP === undefined || profileHours === undefined
       ? null
       : Math.round(profile.hourlyCostCOP * profileHours);
+  }
+
+  commercialActualProfileCost(profileId: CommercialRoleId, hours: number | undefined): number | null {
+    const profile = this.commercialProposal()?.settings.profiles.find((item) => item.id === profileId);
+    return hours === undefined || profile?.hourlyCostCOP === null || profile?.hourlyCostCOP === undefined
+      ? null
+      : Math.round(profile.hourlyCostCOP * hours);
   }
 
   commercialLineHours(
@@ -904,6 +1158,7 @@ export class SessionComponent {
           selectedAlternativeId: revision.selectedAlternativeId,
           validUntil: revision.validUntil,
           settings: structuredClone(revision.settings),
+          servicePricing: structuredClone(revision.servicePricing),
           alternatives: structuredClone(revision.alternatives),
           advisorNote: revision.advisorNote,
           taxNote: revision.taxNote,
@@ -976,12 +1231,16 @@ export class SessionComponent {
   saveInternalJson(): void {
     const session = this.session();
     if (!session) return;
-    const url = URL.createObjectURL(new Blob([JSON.stringify(session, null, 2)], { type: 'application/json' }));
+    this.downloadJson(session, `metamag-interno-${slug(session.project)}.json`);
+  }
+
+  private downloadJson(value: unknown, filename: string, isSerialized = false): void {
+    const url = URL.createObjectURL(new Blob([isSerialized ? value as string : JSON.stringify(value, null, 2)], { type: 'application/json' }));
     const anchor = document.createElement('a');
     anchor.href = url;
-    anchor.download = `metamag-interno-${slug(session.project)}.json`;
+    anchor.download = filename;
     anchor.click();
-    URL.revokeObjectURL(url);
+    globalThis.setTimeout(() => URL.revokeObjectURL(url), 0);
   }
 
   dimensionName(id: string): string {

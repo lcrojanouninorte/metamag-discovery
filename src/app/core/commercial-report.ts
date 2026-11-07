@@ -6,9 +6,8 @@ import {
   CommercialServiceLine,
   Responsibility,
   ServiceDeliverable,
-  ServiceMetric,
 } from './commercial-model';
-import { AlternativeCalculation, EstimateScenario } from './commercial-calculator';
+import { AlternativeCalculation } from './commercial-calculator';
 import { getCommercialService } from './commercial-catalog';
 
 export interface ClientProposalService {
@@ -22,12 +21,10 @@ export interface ClientProposalService {
   subtotalCOP: number | null;
   deliverables: ServiceDeliverable[];
   exclusions: string[];
-  hours: Record<EstimateScenario, number>;
   calendarDuration: { minDays: number | null; expectedDays: number | null; maxDays: number | null };
   responsibilities: Responsibility[];
   clientResponsibilities: string[];
   metamagResponsibilities: string[];
-  metrics: ServiceMetric[];
 }
 
 export interface ClientProposalPriceBreakdown {
@@ -36,10 +33,13 @@ export interface ClientProposalPriceBreakdown {
   discountPercent: number;
   externalCostsCOP: number | null;
   taxesCOP: number | null;
+  withholdingCOP: number | null;
   investmentCOP: number | null;
 }
 
 export interface ClientProposalDocument {
+  isDraft: boolean;
+  taxesPending: boolean;
   clientName: string;
   organization: string;
   project: string;
@@ -64,41 +64,16 @@ function serviceFor(line: CommercialServiceLine): CommercialService | undefined 
   return line.serviceSnapshot ?? getCommercialService(line.serviceId);
 }
 
-function hoursForLine(
-  alternative: CommercialAlternative,
-  line: CommercialServiceLine,
-  scenario: EstimateScenario,
-): number {
-  const sharedKeys = new Set<string>();
-  for (const previous of alternative.lines) {
-    if (previous.id === line.id) break;
-    for (const activity of previous.activitiesEstimate) {
-      const key = activity.sharedActivityKey?.trim();
-      if (key) sharedKeys.add(key);
-    }
-  }
-  let total = 0;
-  for (const activity of line.activitiesEstimate) {
-    const key = activity.sharedActivityKey?.trim();
-    if (key && sharedKeys.has(key)) continue;
-    if (key) sharedKeys.add(key);
-    const hours = scenario === 'optimistic'
-      ? activity.hours.min
-      : scenario === 'conservative' ? activity.hours.max : activity.hours.expected;
-    total += (hours ?? 0) * line.quantity;
-  }
-  return total;
-}
-
 function breakdown(
   servicesCOP: number | null,
   discountCOP: number | null,
   externalCostsCOP: number | null,
   taxesCOP: number | null,
+  withholdingCOP: number | null,
   investmentCOP: number | null,
   discountPercent: number,
 ): ClientProposalPriceBreakdown {
-  return { servicesCOP, discountCOP, externalCostsCOP, taxesCOP, investmentCOP, discountPercent };
+  return { servicesCOP, discountCOP, externalCostsCOP, taxesCOP, withholdingCOP, investmentCOP, discountPercent };
 }
 
 export function createClientProposalDocument(
@@ -120,20 +95,19 @@ export function createClientProposalDocument(
       subtotalCOP: line.proposedUnitPriceCOP === null ? null : line.proposedUnitPriceCOP * line.quantity,
       deliverables: structuredClone(line.deliverables),
       exclusions: [...line.exclusions],
-      hours: {
-        optimistic: hoursForLine(alternative, line, 'optimistic'),
-        base: hoursForLine(alternative, line, 'base'),
-        conservative: hoursForLine(alternative, line, 'conservative'),
-      },
       calendarDuration: structuredClone(line.calendarDuration),
       responsibilities: structuredClone(service?.responsibilities ?? []),
       clientResponsibilities: [...(service?.clientResponsibilities ?? [])],
       metamagResponsibilities: [...(service?.metamagResponsibilities ?? [])],
-      metrics: structuredClone(service?.metrics ?? []),
     };
   });
 
   return {
+    isDraft: !['internally_approved', 'shared_with_client', 'accepted', 'rejected'].includes(proposal.status),
+    taxesPending: proposal.settings.taxValidationStatus !== 'validated'
+      || alternative.lines.some((line) => (proposal.settings.taxTreatments[line.serviceId] ?? line.taxTreatment) === 'pending')
+      || (alternative.lines.some((line) => proposal.settings.taxTreatments[line.serviceId] === 'taxable')
+        && proposal.settings.taxPercent === null),
     clientName: session.clientName,
     organization: session.organization,
     project: session.project,
@@ -147,7 +121,9 @@ export function createClientProposalDocument(
     paymentTerms: alternative.paymentTerms,
     scheduleNote: alternative.scheduleNote,
     externalCostNote: alternative.externalCostNote,
-    taxNote: proposal.taxNote,
+    taxNote: proposal.settings.taxValidationStatus !== 'validated'
+      ? 'Los valores se expresan antes de impuestos. Los impuestos aplicables y las retenciones se determinarán conforme a la cotización aprobada.'
+      : proposal.taxNote || 'Los impuestos y las retenciones aplicables se detallan en esta cotización.',
     dependencies: alternative.lines.map((line) => line.dependencyNote).filter(Boolean),
     services,
     oneTime: breakdown(
@@ -155,6 +131,7 @@ export function createClientProposalDocument(
       calculation.oneTimeDiscountCOP,
       calculation.oneTimeThirdPartyChargeCOP,
       calculation.oneTimeTaxCOP,
+      calculation.oneTimeWithholdingCOP,
       calculation.oneTimeClientInvestmentCOP,
       alternative.discountPercent,
     ),
@@ -163,6 +140,7 @@ export function createClientProposalDocument(
       calculation.recurringDiscountCOP,
       calculation.recurringThirdPartyChargeCOP,
       calculation.recurringTaxCOP,
+      calculation.recurringWithholdingCOP,
       calculation.recurringMonthlyInvestmentCOP,
       alternative.discountPercent,
     ),

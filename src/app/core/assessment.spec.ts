@@ -282,6 +282,57 @@ describe('Metamag Discovery domain', () => {
     expect(example.growthEvaluation && classifyGrowth(example.growthEvaluation).level?.name).toBe('Exploración');
     expect(example.actions.map(({ horizon }) => horizon)).toEqual([7, 30]);
     expect(Object.values(example.responses).every(({ answer }) => answer.includes('EJEMPLO FICTICIO'))).toBe(true);
+    expect(report.executiveConclusion).toContain('Exploración');
+    expect(report.executiveStrengths.length).toBeLessThanOrEqual(3);
+    expect(report.executiveOpportunities.length).toBeLessThanOrEqual(3);
+    expect(report.priorityActions.length).toBeLessThanOrEqual(5);
+    expect(report.priorityActions.some(({ state }) => state === 'unknown')).toBe(true);
+    expect(report.clientAgreements.length).toBeGreaterThan(0);
+    expect(JSON.stringify(report.clientServices)).not.toMatch(/audience-and-offer-clarity|EXP-|ACT-/);
+  });
+
+  it('builds client-ready service cards only from explicit selections and caps executive findings', () => {
+    const form = fixtureForm();
+    const session = createSession(form);
+    session.executiveSummaryApproved = true;
+    session.executiveSummary = {
+      confirmedFacts: 'Conversaciones registradas\nOferta definida',
+      declaredFacts: 'Ventas reportadas; origen sin confirmar',
+      inferences: '',
+      strengths: 'Fortaleza uno\nFortaleza dos\nFortaleza tres\nFortaleza cuatro',
+      difficulties: 'Oportunidad uno; Oportunidad dos; Oportunidad tres; Oportunidad cuatro',
+      pendingInformation: 'Confirmar origen de consultas',
+      risksAndDependencies: '',
+      authorResponsibilities: '',
+      metamagResponsibilities: '',
+      priorities: 'Priorizar el registro de consultas',
+      advisorDecisions: '',
+      nextActions: '',
+      dates: '',
+    };
+    session.recommendations['event-readiness'] = {
+      serviceId: 'event-readiness',
+      status: 'recommended_now',
+      justification: 'La experiencia de facilitación requiere preparación.',
+      selected: true,
+      advisorEdited: true,
+    };
+
+    const report = createClientReport(form, session);
+
+    expect(report.confirmedFindings).toHaveLength(2);
+    expect(report.declaredFindings).toEqual(['Ventas reportadas', 'origen sin confirmar']);
+    expect(report.executiveStrengths).toHaveLength(3);
+    expect(report.executiveOpportunities).toHaveLength(3);
+    expect(report.primaryPriority).toBe('Priorizar el registro de consultas');
+    expect(report.pendingFindings).toContain('Confirmar origen de consultas');
+    expect(report.clientServices).toHaveLength(1);
+    expect(report.clientServices[0]).toMatchObject({
+      name: 'Preparación y entrenamiento para eventos',
+      problem: 'La experiencia de facilitación o la preparación de la masterclass no está demostrada.',
+    });
+    expect(report.clientServices[0].deliverables).toContain('Guion de sesión');
+    expect(report.clientServices[0].clientResponsibilities.length).toBeGreaterThan(0);
   });
 });
 

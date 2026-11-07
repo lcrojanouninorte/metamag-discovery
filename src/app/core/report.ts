@@ -1,12 +1,14 @@
 import { assessMaturity } from './assessment';
 import { DiscoverySession, ExecutiveSummary, FormDefinition, QuestionResponse, ServiceRecommendation, emptyExecutiveSummary } from './domain';
 import { interviewCoverage, dimensionCoverage, questionsForInterview } from './interview-progress';
+import { serviceById } from './services.catalog';
 import {
   classifyGrowth,
   createGrowthEvaluation,
   GROWTH_CRITERIA,
   GROWTH_DIMENSIONS,
   GROWTH_LEVELS,
+  GROWTH_SERVICE_CATALOG,
   growthRequirementState,
   GrowthCriterionStatus,
   GROWTH_METHODOLOGY_VERSION,
@@ -55,6 +57,31 @@ export interface ClientReport {
   services: { name: string; status: string; justification: string }[];
   roadmap: { name: string; focus: string; requirements: string[] }[];
   actions: DiscoverySession['actions'];
+  executiveConclusion: string;
+  executiveStrengths: string[];
+  executiveOpportunities: string[];
+  primaryPriority: string;
+  confirmedFindings: string[];
+  declaredFindings: string[];
+  pendingFindings: string[];
+  priorityActions: {
+    dimension: string;
+    action: string;
+    reason: string;
+    evidenceToConfirm: string;
+    state: 'unmet' | 'unknown';
+  }[];
+  clientServices: {
+    name: string;
+    problem: string;
+    solution: string;
+    deliverables: string[];
+    operationalOutcome: string;
+    dependencies: string[];
+    clientResponsibilities: string[];
+    metamagResponsibilities: string[];
+  }[];
+  clientAgreements: { title: string; detail: string }[];
 }
 
 export function createClientReport(form: FormDefinition, session: DiscoverySession): ClientReport {
@@ -64,6 +91,100 @@ export function createClientReport(form: FormDefinition, session: DiscoverySessi
     ? session.growthEvaluation ?? createGrowthEvaluation()
     : createGrowthEvaluation();
   const growthClassification = classifyGrowth(growthEvaluation);
+  const executiveSummary = session.executiveSummaryApproved
+    ? { ...emptyExecutiveSummary(), ...session.executiveSummary }
+    : emptyExecutiveSummary();
+  const nextLevelCriteria = growthApproved && growthClassification.nextTarget
+    ? GROWTH_CRITERIA.filter((criterion) =>
+      criterion.levelId === growthClassification.nextTarget!.id,
+    )
+    : [];
+  const priorityActions = nextLevelCriteria
+    .map((criterion) => {
+      const observed = growthEvaluation.criteria[criterion.id];
+      const state = growthRequirementState(criterion, observed);
+      if (state === 'passed') return null;
+      const dimension = GROWTH_DIMENSIONS.find((item) => item.id === criterion.dimensionId)?.name ?? '';
+      return {
+        dimension,
+        action: state === 'unmet'
+          ? `Resolver: ${criterion.observableBehavior}`
+          : `Confirmar: ${criterion.observableBehavior}`,
+        reason: observed?.justification || observed?.result || '',
+        evidenceToConfirm: state === 'unknown' ? criterion.evidenceRequired : '',
+        state,
+      };
+    })
+    .filter((item): item is NonNullable<typeof item> => item !== null)
+    .slice(0, 5);
+  const growthServices = suggestGrowthPotential(growthEvaluation);
+  const clientServices = [
+    ...growthServices
+      .filter(({ basis }) => basis === 'documented_gap')
+      .map(({ service }) => ({
+        name: service.name,
+        problem: service.problem,
+        solution: `Diseñar y desarrollar ${service.deliverables.join(', ').toLocaleLowerCase('es')} para atender esta brecha.`,
+        deliverables: [...service.deliverables],
+        operationalOutcome: `El equipo contará con ${service.deliverables.join(', ').toLocaleLowerCase('es')} para abordar esta brecha.`,
+        dependencies: service.dependencies.map((id) =>
+          GROWTH_SERVICE_CATALOG.find((item) => item.id === id)?.name ?? '',
+        ).filter(Boolean),
+        clientResponsibilities: [...service.responsibilities.client],
+        metamagResponsibilities: [...service.responsibilities.agency],
+      })),
+    ...Object.values(session.recommendations)
+      .filter((recommendation): recommendation is ServiceRecommendation =>
+        !!recommendation?.selected && recommendation.status !== 'requires_validation',
+      )
+      .map((recommendation) => {
+        const service = serviceById(recommendation.serviceId);
+        if (!service) return null;
+        const dependencyNames = service.dependencies
+          .map((id) => serviceById(id)?.name)
+          .filter((name): name is string => !!name);
+        return {
+          name: service.name,
+          problem: service.problem,
+          solution: service.description,
+          deliverables: [...service.deliverables],
+          operationalOutcome: `El equipo contará con ${service.deliverables.join(', ').toLocaleLowerCase('es')} para ${service.description.toLocaleLowerCase('es')}`,
+          dependencies: dependencyNames,
+          clientResponsibilities: [...service.prerequisites],
+          metamagResponsibilities: [...service.deliverables],
+        };
+      })
+      .filter((item): item is NonNullable<typeof item> => item !== null),
+  ].filter((service, index, all) =>
+    all.findIndex((candidate) => candidate.name === service.name) === index,
+  );
+  const executiveStrengths = summaryItems(executiveSummary.strengths).slice(0, 3);
+  const executiveOpportunities = [
+    ...summaryItems(executiveSummary.difficulties),
+    ...priorityActions.map(({ action }) => action),
+  ].filter((item, index, all) =>
+    all.findIndex((candidate) => candidate.toLocaleLowerCase('es') === item.toLocaleLowerCase('es')) === index,
+  ).slice(0, 3);
+  const confirmedFindings = summaryItems(executiveSummary.confirmedFacts);
+  const declaredFindings = summaryItems(executiveSummary.declaredFacts);
+  const pendingFindings = [
+    ...summaryItems(executiveSummary.pendingInformation),
+    ...priorityActions
+      .filter(({ state }) => state === 'unknown')
+      .map(({ dimension, evidenceToConfirm }) => `${dimension}: ${evidenceToConfirm}`),
+  ].filter((item, index, all) =>
+    all.findIndex((candidate) => candidate.toLocaleLowerCase('es') === item.toLocaleLowerCase('es')) === index,
+  ).slice(0, 5);
+  const primaryPriority = summaryItems(executiveSummary.priorities)[0]
+    ?? executiveOpportunities[0]
+    ?? priorityActions[0]?.action
+    ?? '';
+  const clientAgreements = [
+    { title: 'Decisiones acordadas', detail: executiveSummary.advisorDecisions },
+    { title: 'Responsabilidades del cliente', detail: executiveSummary.authorResponsibilities },
+    { title: 'Responsabilidades de Metamag', detail: executiveSummary.metamagResponsibilities },
+    { title: 'Fechas y compromisos', detail: executiveSummary.dates },
+  ].filter(({ detail }) => detail.trim());
   const statusLabels: Record<string, string> = {
     recommended_now: 'Recomendado ahora',
     recommended_conditionally: 'Recomendado condicionado',
@@ -93,9 +214,7 @@ export function createClientReport(form: FormDefinition, session: DiscoverySessi
     generatedAt: new Date().toISOString(),
     isExample: form.formId === 'metamag-discovery-demo-2026',
     summaryApproved: session.executiveSummaryApproved === true,
-    executiveSummary: session.executiveSummaryApproved
-      ? { ...emptyExecutiveSummary(), ...session.executiveSummary }
-      : emptyExecutiveSummary(),
+    executiveSummary,
     growthApproved,
     growthClassification,
     growthLevels: GROWTH_LEVELS,
@@ -122,7 +241,7 @@ export function createClientReport(form: FormDefinition, session: DiscoverySessi
         confidence: observed?.confidence ?? 'not_assessed',
       };
     }),
-    growthServices: suggestGrowthPotential(growthEvaluation),
+    growthServices,
     coverage: interviewCoverage(questionsForInterview(form, session), session),
     dimensionCoverage: dimensionCoverage(form, questionsForInterview(form, session), session),
     dimensions: form.dimensions.map((dimension) => ({
@@ -156,6 +275,18 @@ export function createClientReport(form: FormDefinition, session: DiscoverySessi
       requirements: item.progressionRequirements,
     })),
     actions: session.actions,
+    executiveConclusion: growthApproved && growthClassification.level
+      ? `El proyecto se encuentra en ${growthClassification.level.name}. ${growthClassification.level.description}`
+      : 'El nivel de desarrollo sigue pendiente de confirmación; se muestran únicamente hallazgos respaldados y asuntos por resolver.',
+    executiveStrengths,
+    executiveOpportunities,
+    primaryPriority,
+    confirmedFindings,
+    declaredFindings,
+    pendingFindings,
+    priorityActions,
+    clientServices,
+    clientAgreements,
   };
 }
 
@@ -167,4 +298,11 @@ export function clientSafeResponse(response: QuestionResponse): Omit<QuestionRes
 function confidenceLabel(result: ReturnType<typeof assessMaturity>): string {
   const label = result.confidence === 'high' ? 'Alta' : result.confidence === 'medium' ? 'Media' : result.confidence === 'low' ? 'Baja' : 'Insuficiente';
   return result.definitive ? label : `${label} (${result.assessedDimensions} de 6 dimensiones evaluadas)`;
+}
+
+function summaryItems(value: string): string[] {
+  return value
+    .split(/\r?\n|[;•]/)
+    .map((item) => item.replace(/^\s*[-*]\s*/, '').trim())
+    .filter(Boolean);
 }

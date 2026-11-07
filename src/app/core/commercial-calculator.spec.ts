@@ -19,10 +19,13 @@ function fixture() {
       hourlyCostCOP: profile.id === 'strategist' ? 100 : null,
     })),
     indirectCostPercent: 20,
+    indirectCostConfigured: true,
     contingencyPercent: 10,
     targetMarginPercent: 40,
     minimumAuthorizedMarginPercent: 75,
     taxPercent: 10,
+    taxValidationStatus: 'validated',
+    taxTreatments: { ...proposal.settings.taxTreatments, 'landing-page': 'taxable' },
   };
   const line: CommercialServiceLine = {
     id: 'line-1',
@@ -53,6 +56,8 @@ function fixture() {
     otherDirectCostCOP: 5,
     thirdPartyChargeCOP: 100,
     proposedUnitPriceCOP: 1000,
+    actualHoursByProfile: {},
+    taxTreatment: 'taxable',
     discountEligible: true,
     dependencyNote: 'Cliente confirma accesos y contenido.',
   };
@@ -104,11 +109,11 @@ describe('commercial catalog and calculator', () => {
     expect(result.targetPriceCOP).toEqual({ optimistic: 248, base: 468, conservative: 688 });
     expect(result.discountCOP).toBe(150);
     expect(result.thirdPartyChargeCOP).toBe(100);
-    expect(result.taxCOP).toBe(95);
-    expect(result.clientInvestmentCOP).toBe(1045);
-    expect(result.estimatedMarginPercent).toBeCloseTo(70.42, 1);
+    expect(result.taxCOP).toBe(85);
+    expect(result.clientInvestmentCOP).toBe(1035);
+    expect(result.estimatedMarginPercent).toBeCloseTo(66.94, 1);
     expect(result.belowMinimumMargin).toBe(true);
-    expect(result.blockers.some((blocker) => blocker.includes('mínimo autorizado'))).toBe(true);
+    expect(result.blockers.some((blocker) => blocker.includes('excepción requiere'))).toBe(true);
   });
 
   it('leaves profitability indeterminate when internal rates, costs or tax settings are unknown', () => {
@@ -126,7 +131,7 @@ describe('commercial catalog and calculator', () => {
     expect(result.clientInvestmentCOP).toBeNull();
     expect(result.blockers.join(' ')).toContain('costo horario interno');
     expect(result.blockers.join(' ')).toContain('costos directos');
-    expect(result.blockers.join(' ')).toContain('tasa de impuestos');
+    expect(result.blockers.join(' ')).toContain('tarifa de IVA');
   });
 
   it('keeps investment indeterminate until an advisor enters a service price', () => {
@@ -144,10 +149,41 @@ describe('commercial catalog and calculator', () => {
     const { proposal, alternative, line } = fixture();
     line.discountEligible = false;
     proposal.settings.taxPercent = 0;
+    proposal.settings.taxTreatments['landing-page'] = 'taxable';
     const result = calculateAlternative(proposal, alternative);
 
     expect(result.discountCOP).toBe(0);
     expect(result.clientInvestmentCOP).toBe(1100);
+    expect(result.estimatedMarginPercent).toBeCloseTo((1000 - result.totalCostCOP.base!) / 1000 * 100, 1);
+  });
+
+  it('labels margin provisional until indirect costs are declared configured', () => {
+    const { proposal, alternative } = fixture();
+    proposal.settings.indirectCostConfigured = false;
+    const result = calculateAlternative(proposal, alternative);
+
+    expect(result.estimatedMarginPercent).not.toBeNull();
+    expect(result.profitabilityState).toBe('provisional');
+    expect(result.warnings.join(' ')).toContain('costos indirectos');
+  });
+
+  it('keeps reference-price margin independent from taxes and external reimbursements', () => {
+    const { proposal, alternative, line } = fixture();
+    line.thirdPartyChargeCOP = 500_000;
+    proposal.settings.taxPercent = 19;
+    const result = calculateAlternative(proposal, alternative);
+
+    expect(result.estimatedMarginPercent).toBeCloseTo(66.94, 1);
+    expect(result.oneTimeTaxCOP).toBe(162);
+    expect(result.oneTimeThirdPartyChargeCOP).toBe(500_000);
+  });
+
+  it('requires a locally declared, attributable exception for discounts above the standard maximum', () => {
+    const { proposal, alternative } = fixture();
+    alternative.discountPercent = 20;
+    const result = calculateAlternative(proposal, alternative);
+    expect(result.blockers.join(' ')).toContain('responsable, fecha y justificación');
+    expect(result.warnings.join(' ')).toContain('autorización especial');
   });
 
   it('keeps recurring campaign fees separate from one-time investment and ineligible discounts', () => {
@@ -160,6 +196,7 @@ describe('commercial catalog and calculator', () => {
     line.otherDirectCostCOP = 0;
     line.thirdPartyChargeCOP = 250000;
     proposal.settings.taxPercent = 0;
+    proposal.settings.taxTreatments['ad-campaign-management'] = 'taxable';
     const result = calculateAlternative(proposal, alternative);
 
     expect(result.oneTimeServiceSubtotalCOP).toBe(0);
@@ -228,15 +265,20 @@ describe('commercial catalog and calculator', () => {
 
   it('keeps discounted revenue below the configured margin visible for explicit approval', () => {
     const { proposal, alternative } = fixture();
-    proposal.discountApproval = { approved: true, justification: '' };
+    proposal.discountApproval = { approved: true, justification: '', responsible: '', declaredAt: '' };
     const result = calculateAlternative(proposal, alternative);
     expect(result.belowMinimumMargin).toBe(true);
-    expect(result.blockers.join(' ')).toContain('justificación');
+    expect(result.blockers.join(' ')).toContain('responsable');
   });
 
   it('never marks an estimation complete as internally approved without a deliberate advisor action', () => {
     const { proposal, alternative } = fixture();
-    proposal.discountApproval = { approved: true, justification: 'Excepción aprobada por alcance y prioridad acordados.' };
+    proposal.discountApproval = {
+      approved: true,
+      justification: 'Excepción declarada por alcance y prioridad acordados.',
+      responsible: 'Asesor',
+      declaredAt: '2026-01-01T00:00:00.000Z',
+    };
     proposal.internalApproval.note = 'Revisé el precio, los costos y la incertidumbre de horas.';
     expect(calculateAlternative(proposal, alternative).blockers).toHaveLength(0);
     expect(canApproveInternally(proposal, alternative)).toBe(true);
@@ -277,8 +319,7 @@ describe('commercial catalog and calculator', () => {
     const serialized = JSON.stringify(document);
 
     expect(document.oneTime.investmentCOP).toBe(calculation.oneTimeClientInvestmentCOP);
-    expect(document.services[0].hours.base).toBe(2);
     expect(document.services[0].unitPriceCOP).toBe(line.proposedUnitPriceCOP);
-    expect(serialized).not.toMatch(/hourlyCostCOP|laborCostCOP|targetPriceCOP|estimatedMarginPercent|internalApproval|thirdPartyCostCOP|otherDirectCostCOP|advisorNote|referencePriceCOP/);
+    expect(serialized).not.toMatch(/hourlyCostCOP|laborCostCOP|targetPriceCOP|estimatedMarginPercent|internalApproval|thirdPartyCostCOP|otherDirectCostCOP|advisorNote|referencePriceCOP|"hours"|"metrics"/);
   });
 });
