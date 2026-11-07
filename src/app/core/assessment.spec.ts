@@ -3,6 +3,13 @@ import { describe, expect, it } from 'vitest';
 import { assessMaturity, validateManualLevel } from './assessment';
 import { createSession, DimensionAssessment, FormDefinition, QuestionResponse } from './domain';
 import { isQuestionVisible } from './form-engine';
+import {
+  classifyGrowth,
+  createGrowthEvaluation,
+  GROWTH_CRITERIA,
+  GROWTH_METHODOLOGY_VERSION,
+} from './growth-model';
+import { createFictionalExampleSession } from './example-report';
 import { clientSafeResponse, createClientReport } from './report';
 import { recommendServices } from './services.catalog';
 import { SessionStore } from './session-store';
@@ -212,6 +219,69 @@ describe('Metamag Discovery domain', () => {
     const report = createClientReport(form, session);
     expect(JSON.stringify(report)).not.toContain('Nota estrictamente interna');
     expect(report.levelName).toBe('Evaluación provisional');
+  });
+
+  it('keeps unapproved summary data out of the report and exposes growth review status', () => {
+    const form = fixtureForm();
+    const session = createSession(form);
+    session.executiveSummary = {
+      confirmedFacts: 'Dato del borrador',
+      declaredFacts: '',
+      inferences: '',
+      strengths: '',
+      difficulties: '',
+      pendingInformation: '',
+      risksAndDependencies: '',
+      authorResponsibilities: '',
+      metamagResponsibilities: '',
+      priorities: '',
+      advisorDecisions: '',
+      nextActions: '',
+      dates: '',
+    };
+    const growthEvaluation = createGrowthEvaluation();
+    for (const criterion of GROWTH_CRITERIA.filter(({ levelId }) => levelId === 'exploracion')) {
+      growthEvaluation.criteria[criterion.id] = {
+        criterionId: criterion.id,
+        status: 'confirmed',
+        result: 'Revisión realizada',
+        evidence: 'Registro revisado',
+        justification: 'El registro cumple la regla de evaluación.',
+        confidence: 'medium',
+      };
+    }
+    session.growthEvaluation = growthEvaluation;
+
+    const draftReport = createClientReport(form, session);
+    expect(draftReport.methodologyVersion).toBe(GROWTH_METHODOLOGY_VERSION);
+    expect(draftReport.growthClassification.level).toBeNull();
+    expect(draftReport.growthClassification.nextTarget?.name).toBe('Exploración');
+    expect(draftReport.growthApproved).toBe(false);
+    expect(draftReport.executiveSummary.confirmedFacts).toBe('');
+    expect(draftReport.isExample).toBe(false);
+
+    session.growthClassificationApproved = true;
+    session.executiveSummaryApproved = true;
+    const approvedReport = createClientReport(form, session);
+    expect(approvedReport.growthApproved).toBe(true);
+    expect(approvedReport.growthClassification.level?.name).toBe('Exploración');
+    expect(approvedReport.executiveSummary.confirmedFacts).toBe('Dato del borrador');
+    expect(approvedReport.growthRequirements.filter(({ levelId }) => levelId === 'exploracion'))
+      .toHaveLength(6);
+  });
+
+  it('creates a clearly fictional, locally viewable example report session', () => {
+    const form = { ...fixtureForm(), formId: 'metamag-discovery-demo-2026' };
+    const example = createFictionalExampleSession(form);
+    const report = createClientReport(form, example);
+
+    expect(report.isExample).toBe(true);
+    expect(example.clientName).toContain('ficticio');
+    expect(example.executiveSummaryApproved).toBe(true);
+    expect(example.growthClassificationApproved).toBe(true);
+    expect(example.growthEvaluation && classifyGrowth(example.growthEvaluation).level?.name).toBe('Exploración');
+    expect(example.actions.map(({ horizon }) => horizon)).toEqual([7, 30]);
+    expect(Object.values(example.responses).every(({ answer }) => answer.includes('EJEMPLO FICTICIO'))).toBe(true);
   });
 });
 

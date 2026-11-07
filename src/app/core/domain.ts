@@ -1,4 +1,7 @@
-export type QuestionStatus = 'pending' | 'answered' | 'requires_verification' | 'not_applicable';
+import type { GrowthEvaluation } from './growth-model';
+
+export type QuestionStatus = 'pending' | 'answered' | 'unknown' | 'requires_verification' | 'not_applicable';
+export type InterviewMode = 'essential' | 'complete';
 export type EvidenceLevel = 'unverified' | 'specific_report' | 'observable' | 'documented';
 export type ConfidenceLevel = 'low' | 'medium' | 'high';
 export type RecommendationStatus =
@@ -133,7 +136,23 @@ export interface RoadmapAction {
   expectedEvidence: string;
   status: 'pending' | 'in_progress' | 'done';
   priority: 'high' | 'medium' | 'low';
-  horizon: 30 | 60 | 90;
+  horizon: 7 | 30 | 60 | 90;
+}
+
+export interface ExecutiveSummary {
+  confirmedFacts: string;
+  declaredFacts: string;
+  inferences: string;
+  strengths: string;
+  difficulties: string;
+  pendingInformation: string;
+  risksAndDependencies: string;
+  authorResponsibilities: string;
+  metamagResponsibilities: string;
+  priorities: string;
+  advisorDecisions: string;
+  nextActions: string;
+  dates: string;
 }
 
 export interface DiscoverySession {
@@ -153,6 +172,7 @@ export interface DiscoverySession {
   initialNotes: string;
   activeSectionId: string;
   activeQuestionId: string;
+  interviewMode?: InterviewMode;
   responses: Record<string, QuestionResponse>;
   assessments: Record<string, DimensionAssessment>;
   manualLevelId: number | null;
@@ -163,6 +183,11 @@ export interface DiscoverySession {
   internalCapacity: string;
   delegatedResponsibilities: string;
   budgetAndTimeline: string;
+  executiveSummary?: ExecutiveSummary;
+  executiveSummaryApproved?: boolean;
+  growthEvaluation?: GrowthEvaluation;
+  growthClassificationApproved?: boolean;
+  growthReviewNote?: string;
 }
 
 export interface AssessmentResult {
@@ -226,6 +251,7 @@ export function createSession(form: FormDefinition, advisor = ''): DiscoverySess
     initialNotes: form.client.notes,
     activeSectionId: firstSection?.id ?? '',
     activeQuestionId: firstQuestion?.id ?? '',
+    interviewMode: 'essential',
     responses: {},
     assessments: Object.fromEntries(form.dimensions.map(({ id }) => [id, emptyAssessment()])),
     manualLevelId: null,
@@ -236,5 +262,25 @@ export function createSession(form: FormDefinition, advisor = ''): DiscoverySess
     internalCapacity: '',
     delegatedResponsibilities: '',
     budgetAndTimeline: '',
+    executiveSummary: emptyExecutiveSummary(),
+    executiveSummaryApproved: false,
+  };
+}
+
+export function emptyExecutiveSummary(): ExecutiveSummary {
+  return {
+    confirmedFacts: '',
+    declaredFacts: '',
+    inferences: '',
+    strengths: '',
+    difficulties: '',
+    pendingInformation: '',
+    risksAndDependencies: '',
+    authorResponsibilities: '',
+    metamagResponsibilities: '',
+    priorities: '',
+    advisorDecisions: '',
+    nextActions: '',
+    dates: '',
   };
 }

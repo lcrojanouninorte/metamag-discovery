@@ -17,14 +17,19 @@ La aplicación se sirve en `http://localhost:4200`. Ejecuta pruebas unitarias co
 
 - La web pública carga un formulario ficticio. Para trabajar con una definición privada, impórtala desde un archivo JSON con **Cargar definición JSON** antes de crear la sesión; el archivo se lee localmente y no se sube a ningún servidor.
 - Cada sesión guarda una copia de su definición en IndexedDB, así puede retomarse después de recargar aunque el formulario importado ya no esté en memoria.
-- La entrevista admite preguntas condicionales declaradas en JSON y registra estado, respuesta, evidencia y notas privadas.
-- El asesor puntúa manualmente cada dimensión; respuestas pendientes nunca se convierten en cero.
-- La evaluación de madurez y la selección de servicios son decisiones distintas.
+- Cambia entre **Entrevista esencial** (14 preguntas guía) y **Diagnóstico completo**. Las preguntas condicionales se aplican según su respuesta y las respuestas previas se conservan al cambiar de modo.
+- En **Resumen** revisa cobertura, respuestas pendientes y separa hechos confirmados, declaraciones y validaciones por realizar. El borrador ejecutivo solo se comparte en el informe después de marcarlo como revisado.
+- En **Diagnóstico**, registra por criterio el resultado, la evidencia, la justificación, el estado y la confianza. Las cinco etapas (Exploración, Activación, Tracción, Optimización y Escalamiento) usan criterios secuenciales por dimensión, no promedios; el nivel permanece provisional hasta que el asesor lo aprueba.
+- El estado **Declarado** no confirma un requisito. Para marcar **No cumplido** o **Confirmado** registra un resultado, evidencia y justificación. Las preguntas relacionadas de la entrevista permiten añadir una referencia a la evidencia del criterio; si cambia la respuesta origen, el criterio queda pendiente de revisión y se invalida la aprobación previa.
+- Los servicios potenciales aparecen solo ante brechas documentadas o evidencia para explorar apoyo en la siguiente etapa. Son sugerencias, no una propuesta comercial; precios, plazos y garantías no se generan.
+- La escala complementaria de 0–3 se conserva separada y no determina los cinco niveles de crecimiento. Las preguntas pendientes nunca se convierten en cero.
+- Agrega acciones con horizonte de 7 o 30 días (también 60/90) para incluir responsables y evidencia esperada en el informe.
 - IndexedDB guarda las sesiones en el navegador. Exporta respaldos JSON para transferir o recuperar información.
-- El informe de cliente tiene vista previa de impresión y permite usar “Guardar como PDF” desde el navegador. Las notas privadas solo están disponibles en el informe interno.
+- El informe de cliente utiliza el mismo modelo de cobertura, evaluación y ruta; incluye gráfico vectorial de cobertura, requisitos del siguiente nivel y servicios potenciales. Usa **Vista previa / Guardar como PDF** y el diálogo de impresión del navegador para obtener el documento A4. Las notas privadas solo están disponibles en el informe interno.
+- En Inicio, usa **Ver informe de ejemplo (ficticio)** para abrir un reporte completo de muestra; queda guardado localmente y cada página indica que sus datos son simulados.
 - No guardes contraseñas ni datos sensibles. Borrar datos del navegador elimina también las sesiones locales.
 
-El modelo de bandas es una hipótesis operativa configurable, no una prueba psicométrica ni una promesa de crecimiento. El informe del cliente comunica limitaciones y datos pendientes.
+La metodología de cinco etapas está propuesta y versionada como `1.0.0`; no es una clasificación científica validada ni una promesa de crecimiento. El modelo complementario 0–3 se mantiene únicamente como registro independiente para compatibilidad con diagnósticos existentes.
 
 ## Publicación en GitHub Pages
 
@@ -38,7 +43,9 @@ La URL depende del propietario y nombre del repositorio; no se considera publica
 - `src/app/core/domain.ts`: entidades versionables de sesiones, respuestas, evidencias, dimensiones, servicios y roadmap.
 - `src/app/core/form-engine.ts`: preguntas condicionales declaradas por datos.
 - `src/app/core/assessment.ts`: cálculo determinista, rango provisional, brechas y controles para nivel manual.
+- `src/app/core/growth-model.ts`: metodología versionada, criterios observables, clasificación secuencial y catálogo de servicios guiado por evidencias.
 - `src/app/core/services.catalog.ts`: catálogo configurable independiente de la madurez.
+- `src/app/core/interview-progress.ts`: ruta esencial, aplicabilidad, cobertura y estados de información.
 - `src/app/core/report.ts`: proyección para cliente sin notas privadas.
 - IndexedDB nativo, sin backend y sin dependencias de persistencia.
 

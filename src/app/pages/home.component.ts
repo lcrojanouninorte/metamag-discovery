@@ -3,6 +3,7 @@ import { Component, inject } from '@angular/core';
 import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { RouterLink, Router } from '@angular/router';
 import { createSession, DiscoverySession, FormDefinition } from '../core/domain';
+import { createFictionalExampleSession } from '../core/example-report';
 import { FormDefinitionService } from '../core/form-definition.service';
 import { SessionStore } from '../core/session-store';
 
@@ -25,6 +26,9 @@ import { SessionStore } from '../core/session-store';
           <button class="button button-primary button-large" type="button" (click)="toggleCreate()">
             <span aria-hidden="true">＋</span> Crear diagnóstico
           </button>
+          @if (forms.form()?.formId === 'metamag-discovery-demo-2026') {
+            <button class="button button-secondary" type="button" (click)="openExampleReport()">Ver informe de ejemplo (ficticio)</button>
+          }
           <div class="privacy-note"><span aria-hidden="true">◇</span> Tus datos permanecen en este dispositivo. No se envían a ningún servidor.</div>
         </section>
 
@@ -99,10 +103,10 @@ import { SessionStore } from '../core/session-store';
         </section>
 
         <footer class="home-footer">
-          <div><span class="eyebrow">Metodología</span><p>La madurez se valida con evidencias. La contratación de servicios se decide por separado, según alcance, capacidad y restricciones.</p></div>
+          <div><span class="eyebrow">Metodología propuesta</span><p>La ruta de cinco niveles se valida con evidencias. La contratación de servicios se decide por separado, según brechas, alcance y restricciones.</p></div>
           <div class="level-chips">
             <span>Nivel 1 · Exploración</span><span>Nivel 2 · Activación</span>
-            <span>Nivel 3 · Lanzamiento estructurado</span><span>Nivel 4 · Crecimiento sistemático</span>
+            <span>Nivel 3 · Tracción</span><span>Nivel 4 · Optimización</span><span>Nivel 5 · Escalamiento</span>
           </div>
         </footer>
         @if (notice) { <div class="toast" role="status">{{ notice }}</div> }
@@ -157,6 +161,21 @@ export class HomeComponent {
         initialNotes: form.client.notes,
       });
       this.createFormInitialized = true;
+    }
+  }
+
+  async openExampleReport(): Promise<void> {
+    const form = this.forms.form();
+    if (!form || form.formId !== 'metamag-discovery-demo-2026') {
+      this.notice = 'El ejemplo solo está disponible con el formulario público de demostración.';
+      return;
+    }
+    try {
+      const session = createFictionalExampleSession(form);
+      await this.store.save(session);
+      await this.router.navigate(['/session', session.id, 'client-report']);
+    } catch (error) {
+      this.notice = error instanceof Error ? `No fue posible abrir el informe de ejemplo: ${error.message}` : 'No fue posible abrir el informe de ejemplo.';
     }
   }
 

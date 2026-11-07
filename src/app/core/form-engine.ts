@@ -11,7 +11,7 @@ export function isQuestionVisible(
   const condition = question.condition;
   if (!condition) return true;
   const response = responses[condition.questionId];
-  if (!response) return false;
+  if (!response || response.status === 'not_applicable' || response.status === 'unknown') return false;
   const value = response[condition.field];
 
   switch (condition.operator) {

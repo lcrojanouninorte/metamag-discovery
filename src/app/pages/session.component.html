@@ -14,9 +14,10 @@
 
       <nav class="workspace-nav screen-only" aria-label="Secciones del diagnóstico">
         <a [routerLink]="['/session', current.id, 'interview']" [class.active]="view() === 'interview'">01 <span>Entrevista</span></a>
-        <a [routerLink]="['/session', current.id, 'diagnosis']" [class.active]="view() === 'diagnosis'">02 <span>Diagnóstico</span></a>
-        <a [routerLink]="['/session', current.id, 'client-report']" [class.active]="view() === 'client-report'">03 <span>Informe cliente</span></a>
-        <a [routerLink]="['/session', current.id, 'internal-report']" [class.active]="view() === 'internal-report'">04 <span>Informe interno</span></a>
+        <a [routerLink]="['/session', current.id, 'summary']" [class.active]="view() === 'summary'">02 <span>Resumen</span></a>
+        <a [routerLink]="['/session', current.id, 'diagnosis']" [class.active]="view() === 'diagnosis'">03 <span>Diagnóstico</span></a>
+        <a [routerLink]="['/session', current.id, 'client-report']" [class.active]="view() === 'client-report'">04 <span>Informe cliente</span></a>
+        <a [routerLink]="['/session', current.id, 'internal-report']" [class.active]="view() === 'internal-report'">05 <span>Informe interno</span></a>
         <span class="nav-progress">{{ current.updatedAt | date:'d MMM, h:mm a' }}</span>
       </nav>
 
@@ -24,8 +25,20 @@
         <main class="interview-layout screen-only">
           <aside class="stage-sidebar" aria-label="Etapas de la entrevista">
             <div class="side-label">GUÍA DE CONVERSACIÓN</div>
+            <div class="interview-mode" role="group" aria-label="Extensión de la entrevista">
+              <button type="button" [attr.aria-pressed]="(current.interviewMode ?? 'complete') === 'essential'" (click)="setInterviewMode('essential')">Esencial · 14</button>
+              <button type="button" [attr.aria-pressed]="(current.interviewMode ?? 'complete') === 'complete'" (click)="setInterviewMode('complete')">Completa · {{ totalQuestionCount(form) }}</button>
+            </div>
             <div class="overall-progress"><span>{{ form.sections.length }} etapas</span><span>{{ questionProgress(current, form) }}</span></div>
-            <div class="progress-track"><span [style.width.%]="questionProgressPercent(current, form)"></span></div>
+            <div class="progress-track" role="progressbar" aria-label="Preguntas aplicables respondidas" [attr.aria-valuenow]="questionProgressPercent(current, form)" aria-valuemin="0" aria-valuemax="100">
+              <span [style.width.%]="questionProgressPercent(current, form)"></span>
+            </div>
+            @if (coverage(); as progress) {
+              <div class="coverage-counts">
+                <strong>{{ progress.answered }}/{{ progress.applicable }} respondidas</strong>
+                <span>{{ progress.pending }} pendientes · {{ progress.percentage }}% de cobertura</span>
+              </div>
+            }
             @for (section of form.sections; track section.id; let i = $index) {
               <button class="stage-item" type="button" [class.selected]="current.activeSectionId === section.id" (click)="setSection(section.id)">
                 <span class="stage-number">{{ (i + 1).toString().padStart(2, '0') }}</span>
@@ -33,11 +46,21 @@
                 @if (sectionAnsweredCount(section.id) === sectionQuestionCount(section.id) && sectionQuestionCount(section.id) > 0) { <span class="stage-check" aria-label="Etapa completa">✓</span> }
               </button>
             }
+            @if (pendingQuestions().length) {
+              <section class="pending-list" aria-labelledby="pending-list-title">
+                <h2 id="pending-list-title">Por conversar · {{ pendingQuestions().length }}</h2>
+                @for (question of pendingQuestions().slice(0, 5); track question.id) {
+                  <button type="button" (click)="goToQuestion(question.id)"><span>{{ question.id }}</span>{{ question.text }}</button>
+                }
+                @if (pendingQuestions().length > 5) { <small>Y {{ pendingQuestions().length - 5 }} preguntas más.</small> }
+              </section>
+            }
             <div class="sidebar-privacy"><span aria-hidden="true">◇</span> Las notas privadas solo aparecen en el informe interno.</div>
           </aside>
 
           <section class="interview-main" aria-live="polite">
             @if (activeSection(); as section) {
+              <div class="interview-route-label">{{ (current.interviewMode ?? 'complete') === 'essential' ? 'RUTA ESENCIAL · 30–40 MIN' : 'DIAGNÓSTICO COMPLETO' }}</div>
               <div class="section-kicker">ETAPA {{ sectionIndex(form, section.id) }} DE {{ form.sections.length }} <span>·</span> {{ section.durationMinutes }} MIN</div>
               <h1 class="section-title">{{ section.title }}</h1>
               <p class="section-purpose">{{ section.purpose }}</p>
@@ -74,6 +97,7 @@
                       <select [formControl]="response.controls.status">
                         <option value="pending">Pendiente</option>
                         <option value="answered">Respondida</option>
+                        <option value="unknown">No sabe</option>
                         <option value="requires_verification">Requiere seguimiento</option>
                         <option value="not_applicable">No aplica</option>
                       </select>
@@ -88,7 +112,7 @@
                   <span class="question-counter">Pregunta {{ currentIndex() + 1 }} de {{ visibleQuestions().length }} en esta etapa</span>
                   <div class="button-row">
                     <button class="button button-secondary" type="button" [disabled]="currentIndex() <= 0" (click)="moveQuestion(-1)">← Anterior</button>
-                    <button class="button button-primary" type="button" (click)="moveQuestion(1)">Siguiente →</button>
+                    <button class="button button-primary" type="button" (click)="moveQuestion(1)">{{ response.controls.status.value === 'pending' ? 'Saltar pregunta →' : 'Siguiente →' }}</button>
                   </div>
                 </div>
               } @else {
@@ -98,6 +122,30 @@
           </section>
 
           <aside class="context-panel">
+            @if (coverage(); as progress) {
+              <section class="coverage-panel" aria-labelledby="coverage-title">
+                <div class="context-label">COBERTURA DE INFORMACIÓN · NO ES MADUREZ</div>
+                <h2 id="coverage-title">Avance de la conversación</h2>
+                <p>{{ progress.answered }} de {{ progress.applicable }} preguntas aplicables con respuesta · {{ progress.pending }} pendientes.</p>
+                <div class="coverage-state-summary">
+                  <span><i class="state-dot confirmed"></i>{{ progress.confirmed }} confirmadas</span>
+                  <span><i class="state-dot declared"></i>{{ progress.declared }} declaradas</span>
+                  <span><i class="state-dot pending"></i>{{ progress.pending }} pendientes</span>
+                  <span><i class="state-dot not-applicable"></i>{{ progress.notApplicable }} no aplica</span>
+                  @if (progress.unknown) { <span><i class="state-dot unknown"></i>{{ progress.unknown }} no sabe</span> }
+                </div>
+                <div class="dimension-coverage">
+                  @for (dimension of coverageByDimension(); track dimension.id) {
+                    <div class="coverage-row" [attr.aria-label]="dimension.name + ': ' + dimension.answered + ' respondidas, ' + dimension.pending + ' pendientes'">
+                      <div><strong>{{ dimension.name }}</strong><span>{{ dimension.answered }}/{{ dimension.applicable }} · {{ dimension.pending }} pendientes</span></div>
+                      <div class="coverage-bar" role="img" [attr.aria-label]="dimension.answered + ' de ' + dimension.applicable + ' preguntas respondidas'">
+                        <span [style.width.%]="dimension.applicable ? dimension.answered * 100 / dimension.applicable : 0"></span>
+                      </div>
+                    </div>
+                  }
+                </div>
+              </section>
+            }
             @if (currentQuestion(); as question) {
               <div class="context-label">ORIENTACIÓN PARA EL ASESOR</div>
               <section class="context-block"><h3>Profundiza con</h3>
@@ -115,19 +163,182 @@
         </main>
       }
 
+      @if (view() === 'summary') {
+        <main class="diagnosis-page summary-page screen-only">
+          <div class="page-heading">
+            <div><div class="eyebrow">SEGUIMIENTO DE LA CONVERSACIÓN</div><h1>Resumen ejecutivo</h1><p>La cobertura mide información registrada, no preparación comercial. Distingue hechos confirmados, declaraciones y validaciones pendientes.</p></div>
+            <div class="confidence-pill">Actualizado localmente · {{ current.updatedAt | date:'d MMM, h:mm a' }}</div>
+          </div>
+          @if (coverage(); as progress) {
+            <section class="summary-progress">
+              <div><strong>{{ progress.answered }} / {{ progress.applicable }}</strong><span>preguntas con respuesta · {{ progress.pending }} pendientes · {{ progress.percentage }}% de cobertura</span></div>
+              <div class="summary-state-legend">
+                <span><i class="state-dot confirmed"></i>{{ progress.confirmed }} confirmadas</span>
+                <span><i class="state-dot declared"></i>{{ progress.declared }} declaradas</span>
+                <span><i class="state-dot pending"></i>{{ progress.pending }} pendientes de validación</span>
+                <span><i class="state-dot not-applicable"></i>{{ progress.notApplicable }} no aplica</span>
+                @if (progress.unknown) { <span><i class="state-dot unknown"></i>{{ progress.unknown }} no sabe</span> }
+              </div>
+            </section>
+          }
+          <section class="coverage-report" aria-labelledby="dimension-coverage-title">
+            <div class="section-heading"><div><div class="eyebrow">COBERTURA POR DIMENSIÓN</div><h2 id="dimension-coverage-title">Información de la entrevista</h2><p>Preguntas respondidas frente a preguntas aplicables al modo seleccionado.</p></div></div>
+            <div class="coverage-report-grid">
+              @for (dimension of coverageByDimension(); track dimension.id) {
+                <article class="coverage-report-row">
+                  <div><strong>{{ dimension.name }}</strong><span>{{ dimension.answered }} respondidas · {{ dimension.pending }} pendientes · {{ dimension.applicable }} aplicables</span></div>
+                  <div class="coverage-bar" role="img" [attr.aria-label]="dimension.name + ': ' + dimension.answered + ' respondidas de ' + dimension.applicable + ' aplicables'">
+                    <span [style.width.%]="dimension.applicable ? dimension.answered * 100 / dimension.applicable : 0"></span>
+                  </div>
+                </article>
+              }
+            </div>
+          </section>
+          <section class="summary-editor" aria-labelledby="summary-editor-title">
+            <div class="section-heading"><div><div class="eyebrow">HECHOS · INFERENCIAS · DECISIONES</div><h2 id="summary-editor-title">Hallazgos y próximos pasos</h2><p>Captura lo conversado y edita el borrador. El informe del cliente solo incluirá este resumen cuando lo marques como revisado.</p></div></div>
+            @let summary = executiveSummary(current);
+            <div class="summary-fields">
+              <label class="field-label">Hechos confirmados<textarea rows="3" [value]="summary.confirmedFacts" (input)="updateExecutiveSummary('confirmedFacts', $any($event.target).value)" placeholder="Solo hechos respaldados por evidencia observable o documentada"></textarea></label>
+              <label class="field-label">Hechos declarados, aún no verificados<textarea rows="3" [value]="summary.declaredFacts" (input)="updateExecutiveSummary('declaredFacts', $any($event.target).value)" placeholder="Atribuye la información a la fuente; no la presentes como verificada"></textarea></label>
+              <label class="field-label">Inferencias del asesor / sistema<textarea rows="3" [value]="summary.inferences" (input)="updateExecutiveSummary('inferences', $any($event.target).value)" placeholder="Identifica la inferencia y la evidencia limitada que la respalda"></textarea></label>
+              <label class="field-label">Fortalezas identificadas<textarea rows="3" [value]="summary.strengths" (input)="updateExecutiveSummary('strengths', $any($event.target).value)"></textarea></label>
+              <label class="field-label">Dificultades identificadas<textarea rows="3" [value]="summary.difficulties" (input)="updateExecutiveSummary('difficulties', $any($event.target).value)"></textarea></label>
+              <label class="field-label">Información pendiente de validación<textarea rows="3" [value]="summary.pendingInformation" (input)="updateExecutiveSummary('pendingInformation', $any($event.target).value)"></textarea></label>
+              <label class="field-label">Riesgos y dependencias<textarea rows="3" [value]="summary.risksAndDependencies" (input)="updateExecutiveSummary('risksAndDependencies', $any($event.target).value)"></textarea></label>
+              <label class="field-label">Responsabilidades de la autora<textarea rows="3" [value]="summary.authorResponsibilities" (input)="updateExecutiveSummary('authorResponsibilities', $any($event.target).value)"></textarea></label>
+              <label class="field-label">Responsabilidades posibles de Metamag<textarea rows="3" [value]="summary.metamagResponsibilities" (input)="updateExecutiveSummary('metamagResponsibilities', $any($event.target).value)"></textarea></label>
+              <label class="field-label">Prioridades propuestas (pendientes de aprobación)<textarea rows="3" [value]="summary.priorities" (input)="updateExecutiveSummary('priorities', $any($event.target).value)"></textarea></label>
+              <label class="field-label">Decisiones confirmadas por el asesor<textarea rows="3" [value]="summary.advisorDecisions" (input)="updateExecutiveSummary('advisorDecisions', $any($event.target).value)"></textarea></label>
+              <label class="field-label">Próximas acciones<textarea rows="3" [value]="summary.nextActions" (input)="updateExecutiveSummary('nextActions', $any($event.target).value)"></textarea></label>
+              <label class="field-label">Fechas y compromisos<textarea rows="3" [value]="summary.dates" (input)="updateExecutiveSummary('dates', $any($event.target).value)"></textarea></label>
+            </div>
+            <div class="summary-approval">
+              <p>{{ current.executiveSummaryApproved ? 'Resumen revisado para compartir.' : 'Borrador interno; falta revisión antes de compartirlo.' }}</p>
+              <button class="button" [class.button-primary]="!current.executiveSummaryApproved" [class.button-secondary]="current.executiveSummaryApproved" type="button" (click)="approveExecutiveSummary()">
+                {{ current.executiveSummaryApproved ? 'Resumen revisado ✓' : 'Marcar resumen como revisado' }}
+              </button>
+            </div>
+          </section>
+          @if (pendingQuestions().length) {
+            <section class="pending-summary">
+              <div class="section-heading"><div><div class="eyebrow">INFORMACIÓN POR RECOPILAR</div><h2>Preguntas pendientes · {{ pendingQuestions().length }}</h2></div></div>
+              <div class="pending-summary-list">
+                @for (question of pendingQuestions(); track question.id) {
+                  <button type="button" (click)="goToQuestion(question.id)"><strong>{{ question.id }}</strong><span>{{ question.text }}</span><span aria-hidden="true">→</span></button>
+                }
+              </div>
+            </section>
+          }
+        </main>
+      }
+
       @if (view() === 'diagnosis') {
         <main class="diagnosis-page screen-only">
+          <section class="growth-model-section" aria-labelledby="growth-route-title">
+            @let growth = growthClassification();
+            <div class="growth-heading">
+              <div><div class="eyebrow">METODOLOGÍA PROPUESTA · VERSIÓN {{ growth.methodologyVersion }}</div><h1 id="growth-route-title">Tu punto de partida y ruta de crecimiento</h1><p>Clasificación secuencial basada en seis dimensiones. No es una escala científica validada ni se deriva de ventas o del número de respuestas.</p></div>
+              <div class="growth-classification" [attr.data-state]="growth.status">
+                <span>{{ growth.status === 'classified' ? 'Nivel actual · provisional hasta revisión' : growth.status === 'below_foundation' ? 'Capacidades base por desarrollar' : 'Nivel pendiente de validación' }}</span>
+                <strong>{{ growth.level?.name ?? 'Sin nivel asignado' }}</strong>
+                @if (growth.nextTarget) {
+                  <small>Siguiente nivel razonable: {{ growth.nextTarget.name }}</small>
+                  <small>{{ growth.nextTargetCounts.totalRequirements - growth.nextTargetCounts.unmetRequirements - growth.nextTargetCounts.unknownRequirements }} de {{ growth.nextTargetCounts.totalRequirements }} requisitos confirmados · {{ growth.nextTargetCounts.unmetRequirements }} no cumplidos · {{ growth.nextTargetCounts.unknownRequirements }} pendientes o no verificados</small>
+                } @else { <small>Se han confirmado requisitos de todos los niveles; requiere revisión del asesor.</small> }
+                <small>Confianza de la evidencia: {{ growthConfidenceLabel(growth.confidence) }}</small>
+              </div>
+            </div>
+            <div class="growth-ladder" aria-label="Niveles de desarrollo comercial">
+              @for (level of growthLevels; track level.id) {
+                <button type="button" class="growth-level-card"
+                  [class.growth-level-current]="growth.level?.id === level.id"
+                  [class.growth-level-target]="growth.nextTarget?.id === level.id"
+                  [class.growth-level-selected]="selectedGrowthLevel() === level.id"
+                  [attr.aria-pressed]="selectedGrowthLevel() === level.id"
+                  (click)="selectGrowthLevel(level.id)">
+                  <span>NIVEL {{ level.order }}</span><strong>{{ level.name }}</strong>
+                  @if (growth.level?.id === level.id) { <small>Actual provisional</small> }
+                  @else if (growth.nextTarget?.id === level.id) { <small>Siguiente objetivo</small> }
+                  @else if (growth.attainedByDimension['demand'] === level.id) { <small>Requisito de base alcanzado</small> }
+                </button>
+              }
+            </div>
+            <div class="growth-dimension-attainment" aria-label="Nivel confirmado por dimensión">
+              @for (dimension of growthDimensions; track dimension.id) {
+                <div><span>{{ dimension.name }}</span><strong>{{ growthLevelName(growth.attainedByDimension[dimension.id]) }}</strong></div>
+              }
+            </div>
+            @for (level of growthLevels; track level.id) {
+              @if (selectedGrowthLevel() === level.id) {
+                <div class="growth-level-detail">
+                  <div class="growth-level-description"><div class="eyebrow">NIVEL {{ level.order }} · {{ level.name }}</div><p>{{ level.description }}</p><strong>Beneficios de desarrollar estas capacidades</strong><ul>@for (benefit of level.benefits; track benefit) { <li>{{ benefit }}</li> }</ul></div>
+                  <div class="growth-requirements">
+                    <h2>Requisitos observables para esta etapa</h2>
+                    <p>Un requisito solo cuenta como cumplido con evidencia y justificación registradas y estado confirmado.</p>
+                    @for (criterion of growthCriteria(); track criterion.id) {
+                      @let criterionEvaluation = growthCriterionEvaluation(criterion.id);
+                      <article class="growth-criterion">
+                        <div class="growth-criterion-heading"><span class="growth-criterion-code">{{ criterion.id }}</span><span>{{ growthDimensions.find(dimension => dimension.id === criterion.dimensionId)?.name }}</span><span class="growth-criterion-state" [attr.data-state]="criterionEvaluation.status">{{ growthCriterionStateLabel(criterion) }}</span></div>
+                        <h3>{{ criterion.observableBehavior }}</h3>
+                        <p><strong>Evidencia requerida:</strong> {{ criterion.evidenceRequired }}</p>
+                        <p><strong>Regla de revisión:</strong> {{ criterion.auditRule }}</p>
+                        <div class="growth-criterion-controls">
+                          <label class="field-label">Estado de evidencia
+                            <select [value]="criterionEvaluation.status" (change)="updateGrowthCriterion(criterion.id, { status: $any($event.target).value })">
+                              <option value="pending">Pendiente / no verificado</option><option value="declared">Declarado, no verificado</option><option value="confirmed">Confirmado con evidencia</option><option value="not_met">No cumplido, con evidencia</option><option value="not_applicable">No aplica</option>
+                            </select>
+                          </label>
+                          <label class="field-label">Confianza
+                            <select [value]="criterionEvaluation.confidence ?? ''" (change)="updateGrowthCriterion(criterion.id, { confidence: $any($event.target).value || null })">
+                              <option value="">No evaluada</option><option value="low">Baja</option><option value="medium">Media</option><option value="high">Alta</option>
+                            </select>
+                          </label>
+                        </div>
+                        <label class="field-label">Resultado observado<textarea rows="2" [value]="criterionEvaluation.result" (input)="updateGrowthCriterion(criterion.id, { result: $any($event.target).value })" placeholder="Describe qué se observó; no infieras un resultado no disponible"></textarea></label>
+                        <label class="field-label">Evidencia concreta<textarea rows="2" [value]="criterionEvaluation.evidence" (input)="updateGrowthCriterion(criterion.id, { evidence: $any($event.target).value })" placeholder="Documento, registro o referencia revisada"></textarea></label>
+                        @let linkedQuestions = growthQuestionsForDimension(criterion.dimensionId);
+                        @if (linkedQuestions.length) {
+                          <details class="linked-interview-evidence"><summary>Respuestas relacionadas de la entrevista ({{ linkedQuestions.length }})</summary>
+                            @for (question of linkedQuestions; track question.id) {
+                              @let answer = responseFor(current, question.id);
+                              <div><strong>{{ question.id }}</strong><p>{{ answer.choice || answer.answer || 'Sin respuesta registrada' }}{{ answer.evidence ? ' · Evidencia: ' + answer.evidence : '' }}</p>@if (answer.choice || answer.answer || answer.evidence) { <button class="text-button" type="button" (click)="linkGrowthEvidence(criterion, question.id)">Añadir referencia a evidencia</button> }</div>
+                            }
+                          </details>
+                        }
+                        <label class="field-label">Justificación del asesor<textarea rows="2" [value]="criterionEvaluation.justification" (input)="updateGrowthCriterion(criterion.id, { justification: $any($event.target).value })" placeholder="Explica cómo la evidencia cumple o no cumple la regla de revisión"></textarea></label>
+                      </article>
+                    }
+                  </div>
+                </div>
+              }
+            }
+            <section class="growth-services">
+              <div class="section-heading"><div><div class="eyebrow">BRECHAS DOCUMENTADAS · NO ES UNA PROPUESTA AUTOMÁTICA</div><h2>Servicios potenciales pertinentes</h2><p>Solo se muestran cuando hay brechas documentadas o evidencia confirmada que permite explorar apoyo en la etapa siguiente.</p></div></div>
+              @if (growthSuggestions().length) {
+                <div class="growth-service-list">
+                  @for (suggestion of growthSuggestions(); track suggestion.service.id) {
+                    <article><div><span class="eyebrow">{{ suggestion.basis === 'documented_gap' ? 'BRECHA DOCUMENTADA' : 'POSIBLE APOYO PARA SIGUIENTE ETAPA' }} · PRIORIDAD {{ suggestion.service.priority }}</span><h3>{{ suggestion.service.name }}</h3><p>{{ suggestion.rationale }}</p><p><strong>Problema que aborda:</strong> {{ suggestion.service.problem }}</p><p><strong>Requisitos previos:</strong> {{ suggestion.service.prerequisiteCriteria.join(', ') || 'No definidos' }}</p><p><strong>Evidencia base:</strong> {{ suggestion.service.evidenceBasis.join(' · ') }}</p><p><strong>Entregables:</strong> {{ suggestion.service.deliverables.join(' · ') }}</p><p><strong>Dependencias:</strong> {{ suggestion.service.dependencies.join(', ') || 'Ninguna declarada' }}</p></div><div><strong>Responsabilidades de la autora</strong><ul>@for (item of suggestion.service.responsibilities.client; track item) { <li>{{ item }}</li> }</ul><strong>Responsabilidades potenciales de Metamag</strong><ul>@for (item of suggestion.service.responsibilities.agency; track item) { <li>{{ item }}</li> }</ul></div></article>
+                  }
+                </div>
+              } @else { <p class="muted">No hay evidencia suficiente para sugerir servicios. Completa requisitos verificables; no se recomienda contratar por el nivel global únicamente.</p> }
+            </section>
+            <section class="growth-review">
+              <div><div class="eyebrow">VALIDACIÓN DEL ASESOR</div><h2>Revisión y aprobación</h2><p>La clasificación se actualiza al cambiar evidencias y no se presenta como aprobada hasta que el asesor registre su revisión.</p></div>
+              <label class="field-label">Nota de revisión (mínimo 12 caracteres)<textarea rows="2" [value]="current.growthReviewNote ?? ''" (input)="updateGrowthReviewNote($any($event.target).value)" placeholder="Indica qué evidencia revisaste y cualquier limitación relevante"></textarea></label>
+              <div class="summary-approval"><p>{{ current.growthClassificationApproved ? 'Clasificación revisada por el asesor.' : 'Clasificación provisional; requiere aprobación del asesor.' }}</p><button class="button" [class.button-primary]="!current.growthClassificationApproved" [class.button-secondary]="current.growthClassificationApproved" type="button" [disabled]="(current.growthReviewNote ?? '').trim().length < 12" (click)="approveGrowthClassification()">{{ current.growthClassificationApproved ? 'Clasificación revisada ✓' : 'Aprobar lectura del asesor' }}</button></div>
+            </section>
+          </section>
           <div class="page-heading">
-            <div><div class="eyebrow">LECTURA VALIDADA POR EL ASESOR</div><h1>Diagnóstico de madurez</h1><p>Asigna una puntuación solo cuando puedas justificarla con evidencia. La ausencia de información permanece sin evaluar.</p></div>
+            <div><div class="eyebrow">EVALUACIÓN COMPLEMENTARIA · MODELO OPERATIVO 0–3</div><h1>Capacidades evaluadas</h1><p>Registro complementario heredado; no determina los cinco niveles de desarrollo comercial que se muestran arriba.</p></div>
             @if (result(); as evaluation) {
-              <div class="score-card"><span>PUNTAJE OBSERVADO</span><strong>{{ evaluation.score }}<small> / 18</small></strong><em>{{ evaluation.assessedDimensions }} de 6 dimensiones verificadas</em></div>
+              <div class="score-card"><span>PUNTAJE COMPLEMENTARIO 0–3</span><strong>{{ evaluation.score }}<small> / 18</small></strong><em>{{ evaluation.assessedDimensions }} de 6 dimensiones verificadas</em></div>
             }
           </div>
           @if (result(); as evaluation) {
             <section class="maturity-summary" [class.provisional]="!evaluation.definitive">
               <div class="maturity-icon">{{ evaluation.definitive ? '✓' : '…' }}</div>
               <div class="maturity-copy">
-                <span class="eyebrow">{{ evaluation.definitive ? 'NIVEL VALIDADO' : 'RESULTADO PROVISIONAL' }}</span>
+                <span class="eyebrow">{{ evaluation.definitive ? 'BANDA COMPLEMENTARIA VALIDADA' : 'BANDA COMPLEMENTARIA PROVISIONAL' }}</span>
                 @if (evaluation.level) {
                   <h2>Nivel {{ evaluation.level.id }} · {{ evaluation.level.name }}</h2>
                   <p>{{ evaluation.level.focus }}</p>
@@ -213,7 +424,7 @@
             </div>
           </section>
           <section class="roadmap-section">
-            <div class="section-heading"><div><div class="eyebrow">RUTA DE EVOLUCIÓN, NO PROMESA</div><h2>Roadmap por niveles</h2><p>Las transiciones indican capacidades y evidencias a construir; no garantizan resultados comerciales.</p></div></div>
+            <div class="section-heading"><div><div class="eyebrow">MODELO COMPLEMENTARIO ANTERIOR · 4 BANDAS</div><h2>Referencias de la escala 0–3</h2><p>Este esquema se conserva para sesiones previas y no determina los cinco niveles de crecimiento. Las transiciones no garantizan resultados comerciales.</p></div></div>
             <div class="roadmap-levels">@for (level of form.maturityModel.levels; track level.id) {
               <article class="roadmap-level" [class.current-level]="result()?.level?.id === level.id">
                 <span class="roadmap-number">0{{ level.id }}</span><h3>{{ level.name }}</h3><p>{{ level.focus }}</p>
@@ -229,12 +440,12 @@
                 <label>Responsable<input formControlName="owner"></label>
                 <label>Evidencia esperada<input formControlName="expectedEvidence" placeholder="Qué permitirá confirmar el avance"></label>
                 <label>Plazo<input type="date" formControlName="dueDate"></label>
-                <label>Horizonte<select formControlName="horizon"><option [ngValue]="30">30 días</option><option [ngValue]="60">60 días</option><option [ngValue]="90">90 días</option></select></label>
+                <label>Horizonte<select formControlName="horizon"><option [ngValue]="7">7 días</option><option [ngValue]="30">30 días</option><option [ngValue]="60">60 días</option><option [ngValue]="90">90 días</option></select></label>
                 <label>Prioridad<select formControlName="priority"><option value="high">Alta</option><option value="medium">Media</option><option value="low">Baja</option></select></label>
               </div>
               <button class="button button-secondary" type="submit">＋ Agregar acción</button>
             </form>
-            @for (horizon of [30, 60, 90]; track horizon) {
+            @for (horizon of [7, 30, 60, 90]; track horizon) {
               <div class="action-horizon"><h3>{{ horizon }} días</h3>
                 @for (action of actionsFor(horizon); track action.id) {
                   <article class="action-row">
@@ -253,15 +464,19 @@
         <main class="report-page client-report">
           <div class="report-toolbar screen-only"><div><div class="eyebrow">VISTA PREVIA · COMPARTIBLE CON EL CLIENTE</div><h1>Informe de diagnóstico</h1><p>Las notas privadas del asesor y las preguntas internas no se incluyen en este informe.</p></div><button class="button button-primary" type="button" (click)="printReport()">Vista previa / Guardar como PDF</button></div>
           <article class="client-document">
-            <header class="report-cover"><div class="report-brand"><span class="brand-mark">M</span><span>METAMAG <strong>AGENCY</strong></span></div><div class="eyebrow">DIAGNÓSTICO CONSULTIVO</div><h1>{{ form.reportConfiguration.clientPdf.title }}</h1><div class="cover-rule"></div><p class="cover-client">{{ report.clientName }}</p><p>{{ report.project }}{{ report.organization ? ' · ' + report.organization : '' }}</p><p>{{ report.meetingDate | date:'d MMMM y' }}</p><div class="cover-foot">METAMAG AGENCY S.A.S. BIC · Documento de trabajo</div></header>
-            <section class="report-section"><div class="eyebrow">01 · RESUMEN EJECUTIVO</div><h2>Una lectura para decidir próximos pasos</h2><p>{{ report.objective || 'El objetivo de esta conversación se encuentra pendiente de validación.' }}</p><div class="report-level"><span>Nivel de madurez {{ result()?.definitive ? 'validado' : 'provisional' }}</span><strong>{{ result()?.definitive ? report.levelName : 'Rango posible: ' + result()?.provisionalRange?.minimum?.name + ' — ' + result()?.provisionalRange?.maximum?.name }}</strong><p>{{ report.levelFocus }}</p><small>Confianza: {{ report.confidence }} · Puntaje observado: {{ report.score }} / 18</small></div></section>
-            <section class="report-section"><div class="eyebrow">02 · METODOLOGÍA Y ALCANCE</div><h2>Cómo interpretar esta lectura</h2><p>Seis dimensiones se puntúan de 0 a 3 mediante validación del asesor y evidencia disponible. Las respuestas abiertas no se califican automáticamente. Un dato pendiente no se interpreta como capacidad inexistente.</p><p>Las bandas y el instrumento son hipótesis operativas de METAMAG; no constituyen una prueba psicométrica ni una promesa de resultados.</p></section>
-            <section class="report-section"><div class="eyebrow">03 · CAPACIDADES EVALUADAS</div><h2>Seis dimensiones</h2><table class="report-table"><thead><tr><th>Dimensión</th><th>Puntaje</th><th>Justificación y evidencia compartible</th></tr></thead><tbody>@for (dimension of report.dimensions; track dimension.name) { <tr><td>{{ dimension.name }}</td><td>{{ dimension.score === null ? 'Sin evaluar' : dimension.score + ' / 3' }}</td><td>{{ dimension.justification || dimension.evidence || 'Evidencia insuficiente para emitir una conclusión.' }}</td></tr> }</tbody></table></section>
-            @if (report.strengths.length) { <section class="report-section"><div class="eyebrow">04 · FORTALEZAS</div><h2>Capacidades respaldadas por evidencia</h2>@for (item of report.strengths; track item.dimensionId) { <div class="report-bullet"><strong>{{ item.dimensionId }}</strong><p>{{ item.evidence }}</p></div> }</section> }
-            @if (report.gaps.length) { <section class="report-section"><div class="eyebrow">05 · BRECHAS Y RIESGOS</div><h2>Aspectos prioritarios a resolver</h2>@for (item of report.gaps; track item.dimensionId) { <div class="report-bullet"><strong>{{ item.dimensionId }}{{ item.critical ? ' · Brecha crítica' : '' }}</strong><p>{{ item.justification || 'Requiere evidencia y definición de una acción.' }}</p></div> }</section> }
-            <section class="report-section"><div class="eyebrow">06 · RECOMENDACIONES</div><h2>Servicios potenciales</h2>@if (report.services.length) { @for (service of report.services; track service.name) { <div class="report-bullet"><strong>{{ service.name }} · {{ service.status }}</strong><p>{{ service.justification }}</p></div> } } @else { <p>No hay servicios seleccionados. Las decisiones comerciales se validarán por separado con el cliente.</p> }</section>
-            <section class="report-section"><div class="eyebrow">07 · ROADMAP</div><h2>Niveles de evolución</h2><div class="report-roadmap">@for (level of report.roadmap; track level.name) { <div><strong>{{ level.name }}</strong><p>{{ level.focus }}</p><ul>@for (requirement of level.requirements; track $index) { <li>{{ requirement }}</li> }</ul></div> }</div></section>
-            <section class="report-section"><div class="eyebrow">08 · ACCIONES Y RESPONSABILIDADES</div><h2>Próximos pasos acordados</h2>@if (report.actions.length) { <table class="report-table"><thead><tr><th>Plazo</th><th>Acción</th><th>Responsable</th><th>Evidencia esperada</th></tr></thead><tbody>@for (action of report.actions; track action.id) { <tr><td>{{ action.horizon }} días</td><td>{{ action.title }}</td><td>{{ action.owner }}</td><td>{{ action.expectedEvidence }}</td></tr> }</tbody></table> } @else { <p>Las acciones y responsables están pendientes de definición conjunta.</p> }</section>
+            <header class="report-cover"><div class="report-brand"><span class="brand-mark">M</span><span>METAMAG <strong>AGENCY</strong></span></div>@if (report.isExample) { <div class="example-banner">EJEMPLO · TODOS LOS DATOS SON FICTICIOS</div> }<div class="eyebrow">DIAGNÓSTICO CONSULTIVO</div><h1>{{ form.reportConfiguration.clientPdf.title }}</h1><div class="cover-rule"></div><p class="cover-client">{{ report.clientName }}</p><p>{{ report.project }}{{ report.organization ? ' · ' + report.organization : '' }}</p><p>{{ report.meetingDate | date:'d MMMM y' }}</p><div class="cover-foot">METAMAG AGENCY S.A.S. BIC · Generado {{ report.generatedAt | date:'d MMMM y, h:mm a' }} · Metodología {{ report.methodologyVersion }}</div></header>
+            <section class="report-section"><div class="eyebrow">01 · RESUMEN EJECUTIVO</div><h2>Una lectura para decidir próximos pasos</h2><p>{{ report.objective || 'El objetivo de esta conversación se encuentra pendiente de validación.' }}</p>@if (report.summaryApproved) { <div class="approved-summary"><span class="approved-stamp">RESUMEN REVISADO POR EL ASESOR</span>@for (item of [{ label: 'Hechos confirmados', value: report.executiveSummary.confirmedFacts }, { label: 'Declarado, no verificado', value: report.executiveSummary.declaredFacts }, { label: 'Inferencias del asesor', value: report.executiveSummary.inferences }, { label: 'Fortalezas identificadas', value: report.executiveSummary.strengths }, { label: 'Dificultades identificadas', value: report.executiveSummary.difficulties }, { label: 'Información pendiente', value: report.executiveSummary.pendingInformation }, { label: 'Riesgos y dependencias', value: report.executiveSummary.risksAndDependencies }, { label: 'Prioridades propuestas', value: report.executiveSummary.priorities }, { label: 'Decisiones confirmadas por el asesor', value: report.executiveSummary.advisorDecisions }, { label: 'Próximas acciones', value: report.executiveSummary.nextActions }, { label: 'Responsabilidades de la autora', value: report.executiveSummary.authorResponsibilities }, { label: 'Responsabilidades potenciales de Metamag', value: report.executiveSummary.metamagResponsibilities }, { label: 'Fechas y compromisos', value: report.executiveSummary.dates }]; track item.label) { @if (item.value.trim()) { <div><strong>{{ item.label }}</strong><p>{{ item.value }}</p></div> } }</div> } @else { <p class="report-pending-notice">El resumen ejecutivo aún no ha sido revisado para compartir. Esta vista no incluye su borrador.</p> }</section>
+            <section class="report-section"><div class="eyebrow">02 · PUNTO DE PARTIDA Y RUTA DE CRECIMIENTO</div><h2>Cinco niveles de desarrollo comercial</h2><p>Metodología propuesta, configurable y versionada ({{ report.methodologyVersion }}); no es una clasificación científica validada. Los requisitos avanzan secuencialmente y no se promedian entre dimensiones.</p><div class="report-level"><span>{{ report.growthApproved ? 'Lectura revisada por el asesor' : 'Nivel pendiente de validación por el asesor' }}</span><strong>{{ report.growthApproved && report.growthClassification.level ? report.growthClassification.level.name : 'Nivel pendiente de validación' }}</strong>@if (report.growthClassification.nextTarget) { <p>Siguiente nivel razonable: {{ report.growthClassification.nextTarget.name }}</p><small>Distancia: {{ report.growthClassification.nextTargetCounts.unmetRequirements }} requisitos con brecha documentada y {{ report.growthClassification.nextTargetCounts.unknownRequirements }} pendientes o no verificados. No se expresa como porcentaje.</small> }<small>Confianza: {{ report.growthApproved ? growthConfidenceLabel(report.growthClassification.confidence) : 'Pendiente de revisión del asesor' }}</small></div>
+              <div class="report-growth-ladder" aria-label="Ruta de cinco niveles">@for (level of report.growthLevels; track level.id) { <div [class.current]="report.growthApproved && report.growthClassification.level?.id === level.id" [class.target]="report.growthClassification.nextTarget?.id === level.id"><span>NIVEL {{ level.order }}</span><strong>{{ level.name }}</strong><p>{{ level.description }}</p><small>Beneficio: {{ level.benefits.join(' · ') }}</small>@if (report.growthApproved && report.growthClassification.level?.id === level.id) { <small>Actual revisado</small> } @else if (report.growthClassification.nextTarget?.id === level.id) { <small>Siguiente objetivo</small> }</div> }</div>
+              <h3>Matriz de requisitos confirmados por dimensión</h3><table class="report-table"><thead><tr><th>Dimensión</th><th>Nivel más alto confirmado</th></tr></thead><tbody>@for (dimension of report.growthDimensionLevels; track dimension.id) { <tr><td>{{ dimension.name }}</td><td>{{ dimension.levelName || 'Sin evidencia suficiente / pendiente de validación' }}</td></tr> }</tbody></table>
+              @if (report.growthClassification.nextTarget) { <h3>Requisitos del siguiente nivel · {{ report.growthClassification.nextTarget.name }}</h3><div class="report-requirements">@for (requirement of report.growthRequirements; track requirement.id) { @if (requirement.levelId === report.growthClassification.nextTarget.id) { <article><strong>{{ requirement.dimensionName }} · {{ requirement.id }}</strong><span>{{ growthRequirementLabel(requirement.state) }}</span><p>{{ requirement.observableBehavior }}</p><p><strong>Evidencia requerida:</strong> {{ requirement.evidenceRequired }}</p>@if (requirement.result || requirement.evidence || requirement.justification) { <p><strong>Registro del asesor:</strong> {{ requirement.result }} {{ requirement.evidence }} {{ requirement.justification }}</p> }</article> } }</div> } @else { <p>No hay un siguiente nivel definido. La evidencia de las cinco etapas debe ser revisada por el asesor antes de considerar la ruta completa.</p> }
+            </section>
+            <section class="report-section"><div class="eyebrow">03 · COBERTURA DE INFORMACIÓN</div><h2>Qué se conversó y qué falta validar</h2><p>{{ report.coverage.answered }} de {{ report.coverage.applicable }} preguntas aplicables respondidas · {{ report.coverage.percentage }}% de cobertura · {{ report.coverage.pending }} pendientes. La cobertura no representa preparación comercial.</p><div class="coverage-chart"><svg viewBox="0 0 700 250" role="img" aria-labelledby="coverage-svg-title coverage-svg-desc"><title id="coverage-svg-title">Cobertura de respuestas por dimensión</title><desc id="coverage-svg-desc">Barras horizontales de preguntas respondidas frente a aplicables en cada dimensión.</desc>@for (dimension of report.dimensionCoverage; track dimension.id; let index = $index) { <text x="0" [attr.y]="index * 38 + 19">{{ dimension.name }}</text><rect x="260" [attr.y]="index * 38 + 6" width="340" height="16" rx="4" fill="#e8ede9"></rect><rect x="260" [attr.y]="index * 38 + 6" [attr.width]="dimension.applicable ? 340 * dimension.answered / dimension.applicable : 0" height="16" rx="4" fill="#59846d"></rect><text x="615" [attr.y]="index * 38 + 19">{{ dimension.answered }} / {{ dimension.applicable }}</text> }</svg><div class="report-legend"><span>■ Respondidas</span><span>□ Pendientes dentro de preguntas aplicables</span></div></div><p class="coverage-state-caption">Información registrada: {{ report.coverage.confirmed }} confirmadas · {{ report.coverage.declared }} declaradas · {{ report.coverage.pending }} pendientes · {{ report.coverage.notApplicable }} no aplica · {{ report.coverage.unknown }} no sabe.</p></section>
+            <section class="report-section"><div class="eyebrow">04 · EVALUACIÓN COMPLEMENTARIA 0–3</div><h2>Capacidades revisadas por el asesor</h2><p>Este registro complementario conserva la escala previa de 0 a 3; no determina el nivel de crecimiento de cinco etapas. Las dimensiones sin evidencia suficiente permanecen sin evaluar.</p><table class="report-table"><thead><tr><th>Dimensión</th><th>Puntaje</th><th>Justificación y evidencia compartible</th></tr></thead><tbody>@for (dimension of report.dimensions; track dimension.name) { <tr><td>{{ dimension.name }}</td><td>{{ dimension.score === null ? 'Sin evaluar' : dimension.score + ' / 3' }}</td><td>{{ dimension.justification || dimension.evidence || 'Evidencia insuficiente para emitir una conclusión.' }}</td></tr> }</tbody></table></section>
+            <section class="report-section"><div class="eyebrow">05 · FORTALEZAS Y OPORTUNIDADES</div><h2>Hallazgos respaldados por la evaluación complementaria</h2>@if (report.strengths.length) { @for (item of report.strengths; track item.dimensionId) { <div class="report-bullet"><strong>{{ item.dimensionId }} · Fortaleza</strong><p>{{ item.evidence }}</p></div> } } @if (report.gaps.length) { @for (item of report.gaps; track item.dimensionId) { <div class="report-bullet"><strong>{{ item.dimensionId }} · Oportunidad{{ item.critical ? ' · Brecha crítica' : '' }}</strong><p>{{ item.justification || 'Requiere evidencia y definición de una acción.' }}</p></div> } } @if (!report.strengths.length && !report.gaps.length) { <p>No se han aprobado hallazgos suficientes; no se infieren fortalezas ni brechas por ausencia de datos.</p> }</section>
+            <section class="report-section"><div class="eyebrow">06 · SERVICIOS POTENCIALES PERTINENTES</div><h2>Opciones justificadas por brechas</h2>@if (report.growthServices.length) { @for (suggestion of report.growthServices; track suggestion.service.id) { <div class="report-bullet"><strong>{{ suggestion.service.name }} · {{ suggestion.basis === 'documented_gap' ? 'Brecha documentada' : 'Posible apoyo para siguiente etapa' }} · Prioridad {{ suggestion.service.priority }}</strong><p>{{ suggestion.rationale }}</p><p>{{ suggestion.service.problem }}</p><p><strong>Requisitos previos:</strong> {{ suggestion.service.prerequisiteCriteria.join(', ') || 'No definidos' }} · <strong>Evidencia:</strong> {{ suggestion.service.evidenceBasis.join(' · ') }}</p><p><strong>Entregables:</strong> {{ suggestion.service.deliverables.join(' · ') }} · <strong>Dependencias:</strong> {{ suggestion.service.dependencies.join(', ') || 'Ninguna declarada' }}</p><p><strong>Responsabilidades de la autora:</strong> {{ suggestion.service.responsibilities.client.join('; ') }}<br><strong>Responsabilidades potenciales de Metamag:</strong> {{ suggestion.service.responsibilities.agency.join('; ') }}</p></div> } } @else { <p>No hay evidencia suficiente para sugerir servicios. No se infiere una necesidad a partir del nivel global.</p> } @if (report.services.length) { <h3>Decisiones de servicio revisadas por el asesor</h3>@for (service of report.services; track service.name) { <div class="report-bullet"><strong>{{ service.name }} · {{ service.status }}</strong><p>{{ service.justification }}</p></div> } }</section>
+            <section class="report-section"><div class="eyebrow">07 · ACCIONES Y RESPONSABILIDADES</div><h2>Plan de acción de 7 y 30 días</h2>@if (report.actions.length) { <table class="report-table"><thead><tr><th>Plazo</th><th>Acción</th><th>Responsable</th><th>Evidencia esperada</th></tr></thead><tbody>@for (action of report.actions; track action.id) { <tr><td>{{ action.horizon }} días</td><td>{{ action.title }}</td><td>{{ action.owner }}</td><td>{{ action.expectedEvidence }}</td></tr> }</tbody></table> } @else { <p>Las acciones y responsables están pendientes de definición conjunta.</p> }</section>
+            <section class="report-section"><div class="eyebrow">08 · METODOLOGÍA Y ALCANCE</div><h2>Cómo interpretar este documento</h2><p>El modelo de cinco niveles es una metodología propuesta y versionada. Cada nivel requiere evidencia observable confirmada en sus seis dimensiones y la clasificación avanza secuencialmente; no se promedian capacidades dispares. Evidencia declarada, pendiente o no aplicable no confirma un requisito.</p><p>La cobertura describe la información capturada, no la preparación comercial. La ausencia de información no se considera capacidad inexistente. Los servicios son opciones para revisión conjunta, no una propuesta comercial automática.</p><p>Este diagnóstico es exploratorio, refleja información disponible a la fecha y no garantiza ventas, crecimiento ni resultados de campaña. No se incluyen precios, plazos comerciales ni garantías.</p></section>
             <footer class="report-disclaimer"><strong>Limitaciones</strong><p>Este diagnóstico refleja información disponible en una conversación y evidencias revisadas a la fecha. No garantiza ventas, crecimiento ni resultados de campaña. Las capacidades no verificadas deben confirmarse antes de tomar decisiones de inversión o calendario.</p></footer>
           </article>
         </main>

@@ -1,5 +1,17 @@
 import { assessMaturity } from './assessment';
-import { DiscoverySession, FormDefinition, QuestionResponse, ServiceRecommendation } from './domain';
+import { DiscoverySession, ExecutiveSummary, FormDefinition, QuestionResponse, ServiceRecommendation, emptyExecutiveSummary } from './domain';
+import { interviewCoverage, dimensionCoverage, questionsForInterview } from './interview-progress';
+import {
+  classifyGrowth,
+  createGrowthEvaluation,
+  GROWTH_CRITERIA,
+  GROWTH_DIMENSIONS,
+  GROWTH_LEVELS,
+  growthRequirementState,
+  GrowthCriterionStatus,
+  GROWTH_METHODOLOGY_VERSION,
+  suggestGrowthPotential,
+} from './growth-model';
 
 export interface ClientReport {
   clientName: string;
@@ -11,6 +23,32 @@ export interface ClientReport {
   levelFocus: string;
   score: number;
   confidence: string;
+  methodologyVersion: string;
+  generatedAt: string;
+  isExample: boolean;
+  summaryApproved: boolean;
+  executiveSummary: ExecutiveSummary;
+  growthApproved: boolean;
+  growthClassification: ReturnType<typeof classifyGrowth>;
+  growthLevels: typeof GROWTH_LEVELS;
+  growthDimensionLevels: { id: string; name: string; levelName: string | null }[];
+  growthRequirements: {
+    id: string;
+    levelId: string;
+    levelName: string;
+    dimensionName: string;
+    observableBehavior: string;
+    evidenceRequired: string;
+    status: GrowthCriterionStatus;
+    state: 'passed' | 'unmet' | 'unknown';
+    result: string;
+    evidence: string;
+    justification: string;
+    confidence: string;
+  }[];
+  growthServices: ReturnType<typeof suggestGrowthPotential>;
+  coverage: ReturnType<typeof interviewCoverage>;
+  dimensionCoverage: ReturnType<typeof dimensionCoverage>;
   dimensions: { name: string; score: number | null; evidence: string; justification: string }[];
   strengths: { dimensionId: string; evidence: string }[];
   gaps: { dimensionId: string; justification: string; critical: boolean }[];
@@ -21,6 +59,11 @@ export interface ClientReport {
 
 export function createClientReport(form: FormDefinition, session: DiscoverySession): ClientReport {
   const result = assessMaturity(form, session.assessments, session.manualLevelId, session.manualLevelJustification);
+  const growthApproved = session.growthClassificationApproved === true;
+  const growthEvaluation = growthApproved
+    ? session.growthEvaluation ?? createGrowthEvaluation()
+    : createGrowthEvaluation();
+  const growthClassification = classifyGrowth(growthEvaluation);
   const statusLabels: Record<string, string> = {
     recommended_now: 'Recomendado ahora',
     recommended_conditionally: 'Recomendado condicionado',
@@ -46,6 +89,42 @@ export function createClientReport(form: FormDefinition, session: DiscoverySessi
     levelFocus: result.level?.focus ?? 'Se requiere completar y validar las seis dimensiones.',
     score: result.score,
     confidence: confidenceLabel(result),
+    methodologyVersion: GROWTH_METHODOLOGY_VERSION,
+    generatedAt: new Date().toISOString(),
+    isExample: form.formId === 'metamag-discovery-demo-2026',
+    summaryApproved: session.executiveSummaryApproved === true,
+    executiveSummary: session.executiveSummaryApproved
+      ? { ...emptyExecutiveSummary(), ...session.executiveSummary }
+      : emptyExecutiveSummary(),
+    growthApproved,
+    growthClassification,
+    growthLevels: GROWTH_LEVELS,
+    growthDimensionLevels: GROWTH_DIMENSIONS.map((dimension) => ({
+      ...dimension,
+      levelName: GROWTH_LEVELS.find((level) =>
+        level.id === growthClassification.attainedByDimension[dimension.id],
+      )?.name ?? null,
+    })),
+    growthRequirements: GROWTH_CRITERIA.map((criterion) => {
+      const observed = growthEvaluation.criteria[criterion.id];
+      return {
+        id: criterion.id,
+        levelId: criterion.levelId,
+        levelName: GROWTH_LEVELS.find((level) => level.id === criterion.levelId)?.name ?? criterion.levelId,
+        dimensionName: GROWTH_DIMENSIONS.find((dimension) => dimension.id === criterion.dimensionId)?.name ?? criterion.dimensionId,
+        observableBehavior: criterion.observableBehavior,
+        evidenceRequired: criterion.evidenceRequired,
+        status: observed?.status ?? 'pending',
+        state: growthRequirementState(criterion, observed),
+        result: observed?.result ?? '',
+        evidence: observed?.evidence ?? '',
+        justification: observed?.justification ?? '',
+        confidence: observed?.confidence ?? 'not_assessed',
+      };
+    }),
+    growthServices: suggestGrowthPotential(growthEvaluation),
+    coverage: interviewCoverage(questionsForInterview(form, session), session),
+    dimensionCoverage: dimensionCoverage(form, questionsForInterview(form, session), session),
     dimensions: form.dimensions.map((dimension) => ({
       name: dimension.name,
       score: session.assessments[dimension.id]?.score ?? null,
