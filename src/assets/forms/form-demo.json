@@ -1,0 +1,783 @@
+{
+  "schemaVersion": "1.0.0",
+  "formId": "metamag-discovery-demo-2026",
+  "title": "Diagnóstico comercial y operativo — Formulario de demostración",
+  "description": "Entrevista conductual guiada para identificar capacidades demostradas, brechas, riesgos y servicios potenciales.",
+  "language": "es-CO",
+  "estimatedDurationMinutes": 45,
+  "audience": "advisor",
+  "client": {
+    "name": "Cliente de demostración",
+    "project": "Proyecto de demostración",
+    "productType": "producto digital",
+    "launchDate": "",
+    "reportedInitialSales": null,
+    "salesOriginVerified": false,
+    "objectivesReported": [
+      "Validar una propuesta de valor",
+      "Identificar señales de demanda",
+      "Definir próximos pasos verificables"
+    ],
+    "notes": "Datos ficticios de demostración. Sustituye por antecedentes reportados y valídalos durante la sesión."
+  },
+  "responseModel": {
+    "statusOptions": [
+      "pending",
+      "answered",
+      "requires_verification",
+      "not_applicable"
+    ],
+    "evidenceLevels": [
+      {
+        "id": "unverified",
+        "label": "Declaración general"
+      },
+      {
+        "id": "specific_report",
+        "label": "Comportamiento específico reportado"
+      },
+      {
+        "id": "observable",
+        "label": "Evidencia observable"
+      },
+      {
+        "id": "documented",
+        "label": "Resultado documentado"
+      }
+    ],
+    "fields": [
+      "answer",
+      "choice",
+      "evidence",
+      "evidenceLevel",
+      "status",
+      "advisorPrivateNotes",
+      "followUpRequired"
+    ]
+  },
+  "dimensions": [
+    {
+      "id": "demand",
+      "name": "Audiencia y demanda"
+    },
+    {
+      "id": "content",
+      "name": "Comunicación y contenido"
+    },
+    {
+      "id": "presentation",
+      "name": "Presentación y facilitación"
+    },
+    {
+      "id": "technology",
+      "name": "Tecnología y operación"
+    },
+    {
+      "id": "commercial",
+      "name": "Seguimiento comercial"
+    },
+    {
+      "id": "sustainability",
+      "name": "Disponibilidad y sostenibilidad"
+    }
+  ],
+  "sections": [
+    {
+      "id": "context",
+      "title": "Contexto y situación actual",
+      "durationMinutes": 5,
+      "purpose": "Identificar acciones realizadas y resultados iniciales.",
+      "openingScript": "Antes de hablar de campañas, queremos entender qué ha sucedido desde que publicaste el producto.",
+      "questions": [
+        {
+          "id": "CTX-01",
+          "text": "¿Qué acciones concretas has realizado para dar a conocer el producto desde su lanzamiento?",
+          "dimensionIds": [
+            "content"
+          ],
+          "followUps": [
+            "¿Cuáles fueron las últimas tres acciones?",
+            "¿Cuándo las realizaste?",
+            "¿Qué ocurrió después?"
+          ],
+          "advisorTip": "Pedir ejemplos recientes, no declaraciones generales.",
+          "riskSignal": "Actividad promocional sin frecuencia ni seguimiento.",
+          "expectedEvidence": [
+            "Publicaciones",
+            "Mensajes",
+            "Eventos",
+            "Fechas"
+          ]
+        },
+        {
+          "id": "CTX-02",
+          "text": "De las ventas iniciales reportadas, ¿qué sabes sobre cómo llegaron los compradores?",
+          "dimensionIds": [
+            "demand",
+            "commercial"
+          ],
+          "followUps": [
+            "¿Cuántos eran conocidos?",
+            "¿Cuántos no conocías?",
+            "¿Cómo identificaste su origen?"
+          ],
+          "advisorTip": "Separar ventas conocidas, externas y de origen desconocido.",
+          "riskSignal": "Asumir que las ventas iniciales validan demanda externa.",
+          "expectedEvidence": [
+            "Registro de ventas",
+            "Conversaciones",
+            "Origen de compradores"
+          ]
+        },
+        {
+          "id": "CTX-03",
+          "text": "¿Qué ocurrió que te llevó a buscar un equipo de apoyo ahora?",
+          "dimensionIds": [
+            "sustainability"
+          ],
+          "followUps": [
+            "¿Qué intentaste resolver por tu cuenta?",
+            "¿Qué te ha resultado más difícil?"
+          ],
+          "advisorTip": "Identificar el problema que motiva la contratación.",
+          "riskSignal": "Objetivo genérico sin necesidad operativa identificada.",
+          "expectedEvidence": [
+            "Dificultades concretas",
+            "Actividades pendientes"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "audience",
+      "title": "Audiencia y validación de demanda",
+      "durationMinutes": 6,
+      "purpose": "Identificar señales verificables de interés externo.",
+      "questions": [
+        {
+          "id": "AUD-01",
+          "text": "En los últimos 14 días, ¿cuántas personas te han preguntado por el producto?",
+          "dimensionIds": [
+            "demand"
+          ],
+          "followUps": [
+            "¿Por qué canales?",
+            "¿Cuántas no conocías?",
+            "¿Qué preguntaron?"
+          ],
+          "advisorTip": "Registrar consultas, no equipararlas con compras.",
+          "riskSignal": "No existe registro de interesados.",
+          "expectedEvidence": [
+            "Mensajes",
+            "Correos",
+            "Consultas"
+          ]
+        },
+        {
+          "id": "AUD-02",
+          "text": "¿Qué preguntas, dudas u objeciones se repiten entre las personas interesadas?",
+          "dimensionIds": [
+            "demand",
+            "commercial"
+          ],
+          "followUps": [
+            "¿Recuerdas dos ejemplos recientes?",
+            "¿Qué respondiste?"
+          ],
+          "advisorTip": "Identificar patrones reales de interés.",
+          "riskSignal": "No se conoce qué frena la decisión de compra.",
+          "expectedEvidence": [
+            "Preguntas frecuentes",
+            "Objeciones"
+          ]
+        },
+        {
+          "id": "AUD-03",
+          "text": "¿Cuál fue tu última publicación sobre el producto y qué respuesta tuvo?",
+          "dimensionIds": [
+            "content",
+            "demand"
+          ],
+          "followUps": [
+            "¿Cuándo se publicó?",
+            "¿Cuántas consultas generó?",
+            "¿Puedes revisar sus estadísticas?"
+          ],
+          "advisorTip": "Distinguir alcance, interacción y conversión.",
+          "riskSignal": "Evaluación basada únicamente en visualizaciones.",
+          "expectedEvidence": [
+            "Publicación",
+            "Estadísticas",
+            "Consultas"
+          ]
+        },
+        {
+          "id": "AUD-04",
+          "text": "¿Has recibido interés de personas que no conocías previamente?",
+          "dimensionIds": [
+            "demand"
+          ],
+          "followUps": [
+            "¿Cómo llegaron?",
+            "¿Qué acción realizaron?"
+          ],
+          "advisorTip": "Buscar evidencia de demanda fuera del círculo cercano.",
+          "riskSignal": "Demanda externa todavía no demostrada.",
+          "expectedEvidence": [
+            "Conversaciones",
+            "Registros",
+            "Compras"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "communication",
+      "title": "Contenido y hábitos de comunicación",
+      "durationMinutes": 6,
+      "purpose": "Evaluar producción real y capacidad de sostener actividades.",
+      "questions": [
+        {
+          "id": "COM-01",
+          "text": "¿Qué contenido has publicado durante las últimas dos semanas?",
+          "dimensionIds": [
+            "content"
+          ],
+          "followUps": [
+            "¿Cuántas piezas?",
+            "¿En qué formatos?",
+            "¿Cuánto tiempo te tomó prepararlas?"
+          ],
+          "advisorTip": "Distinguir frecuencia real de intención futura.",
+          "riskSignal": "No existe rutina de producción.",
+          "expectedEvidence": [
+            "Publicaciones",
+            "Fechas",
+            "Formatos"
+          ]
+        },
+        {
+          "id": "COM-02",
+          "text": "¿Cuándo fue la última vez que grabaste un video hablando a cámara?",
+          "dimensionIds": [
+            "content",
+            "presentation"
+          ],
+          "followUps": [
+            "¿Cómo te preparaste?",
+            "¿Lo publicaste?",
+            "¿Qué dificultad encontraste?"
+          ],
+          "advisorTip": "Si no tiene experiencia, explorar presentaciones equivalentes.",
+          "riskSignal": "Necesidad de entrenamiento audiovisual.",
+          "expectedEvidence": [
+            "Video",
+            "Experiencia relatada"
+          ]
+        },
+        {
+          "id": "COM-03",
+          "text": "¿Qué materiales tienes disponibles para el producto?",
+          "dimensionIds": [
+            "content"
+          ],
+          "followUps": [
+            "¿Tienes fotografías y videos?",
+            "¿Existen archivos editables?",
+            "¿Tienes identidad visual?"
+          ],
+          "advisorTip": "Separar materiales existentes de entregables por producir.",
+          "riskSignal": "Dependencias de producción no contempladas.",
+          "expectedEvidence": [
+            "Fotografías",
+            "Videos",
+            "Archivos de marca"
+          ]
+        },
+        {
+          "id": "COM-04",
+          "text": "¿Qué espacios concretos de tu semana podrías dedicar a crear contenido y revisar materiales?",
+          "dimensionIds": [
+            "sustainability"
+          ],
+          "followUps": [
+            "¿Qué días?",
+            "¿Cuántas horas?",
+            "¿Qué compromisos podrían interferir?"
+          ],
+          "advisorTip": "Buscar bloques concretos de calendario.",
+          "riskSignal": "Disponibilidad insuficiente para el alcance previsto.",
+          "expectedEvidence": [
+            "Disponibilidad semanal",
+            "Agenda"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "masterclass",
+      "title": "Masterclass y experiencia de presentación",
+      "durationMinutes": 7,
+      "purpose": "Evaluar preparación, experiencia y viabilidad operativa.",
+      "questions": [
+        {
+          "id": "MST-01",
+          "text": "¿Qué parte de la masterclass ya tienes preparada?",
+          "dimensionIds": [
+            "presentation"
+          ],
+          "followUps": [
+            "¿Existe un temario?",
+            "¿Tienes un guion?",
+            "¿Has ensayado?",
+            "¿Qué duración imaginas?"
+          ],
+          "advisorTip": "Distinguir idea, estructura, materiales y ensayo.",
+          "riskSignal": "Evento sin contenido suficientemente preparado.",
+          "expectedEvidence": [
+            "Temario",
+            "Guion",
+            "Diapositivas"
+          ]
+        },
+        {
+          "id": "MST-02",
+          "text": "¿Cuándo fue la última vez que explicaste un tema ante un grupo durante 15 minutos o más?",
+          "dimensionIds": [
+            "presentation"
+          ],
+          "followUps": [
+            "¿En qué contexto?",
+            "¿Cómo te preparaste?",
+            "¿Qué dificultades encontraste?"
+          ],
+          "advisorTip": "Valorar experiencia transferible, incluso fuera de internet.",
+          "riskSignal": "Necesidad de ensayo y acompañamiento.",
+          "expectedEvidence": [
+            "Experiencia concreta"
+          ]
+        },
+        {
+          "id": "MST-03",
+          "text": "¿Has participado como organizadora o ponente en una reunión virtual?",
+          "inputType": "select",
+          "options": [
+            "Sí, como organizadora",
+            "Sí, como ponente",
+            "Solo como asistente",
+            "No he participado"
+          ],
+          "dimensionIds": [
+            "technology",
+            "presentation"
+          ],
+          "followUps": [
+            "¿Qué plataforma utilizaste?",
+            "¿Compartiste pantalla?",
+            "¿Administraste participantes?"
+          ],
+          "advisorTip": "Separar experiencia como asistente, ponente y organizadora.",
+          "riskSignal": "Falta de experiencia operativa.",
+          "expectedEvidence": [
+            "Eventos anteriores",
+            "Herramientas utilizadas"
+          ]
+        },
+        {
+          "id": "MST-03A",
+          "text": "¿Qué apoyo técnico necesitarías para participar como ponente en una reunión virtual?",
+          "condition": {
+            "questionId": "MST-03",
+            "field": "choice",
+            "operator": "equals",
+            "value": "No he participado"
+          },
+          "dimensionIds": [
+            "technology",
+            "presentation"
+          ],
+          "followUps": [
+            "¿Qué parte te genera más incertidumbre?",
+            "¿Te serviría una sesión de práctica antes del evento?"
+          ],
+          "advisorTip": "La falta de experiencia no impide delegar la operación; permite dimensionar preparación y ensayos.",
+          "riskSignal": "El formato requiere apoyo, ensayo y una contingencia técnica.",
+          "expectedEvidence": [
+            "Necesidades de acompañamiento",
+            "Disponibilidad para ensayo"
+          ]
+        },
+        {
+          "id": "MST-04",
+          "text": "¿Con qué computador, micrófono, cámara, espacio y conexión cuentas?",
+          "dimensionIds": [
+            "technology"
+          ],
+          "followUps": [
+            "¿Los has probado recientemente?",
+            "¿Tienes conexión alternativa?",
+            "¿Dispones de un espacio silencioso?"
+          ],
+          "advisorTip": "Registrar recursos disponibles y pruebas pendientes.",
+          "riskSignal": "Riesgo técnico no evaluado.",
+          "expectedEvidence": [
+            "Inventario de equipos",
+            "Prueba técnica"
+          ]
+        },
+        {
+          "id": "MST-05",
+          "text": "¿La masterclass será gratuita o de pago y qué ocurrirá después de participar?",
+          "dimensionIds": [
+            "commercial"
+          ],
+          "followUps": [
+            "¿Qué recibirá el participante?",
+            "¿Qué acción esperas que realice?",
+            "¿Cómo harás seguimiento?"
+          ],
+          "advisorTip": "Definir propósito y conversión posterior.",
+          "riskSignal": "Evento sin mecanismo de seguimiento.",
+          "expectedEvidence": [
+            "Oferta",
+            "Flujo de inscripción",
+            "Acción posterior"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "sales",
+      "title": "Proceso comercial y seguimiento",
+      "durationMinutes": 5,
+      "purpose": "Evaluar capacidad de convertir y medir interés.",
+      "questions": [
+        {
+          "id": "SAL-01",
+          "text": "¿Qué haces cuando alguien te pregunta por el producto y no compra?",
+          "dimensionIds": [
+            "commercial"
+          ],
+          "followUps": [
+            "¿Qué hiciste con la última persona?",
+            "¿Volviste a contactarla?"
+          ],
+          "advisorTip": "Buscar comportamiento real de seguimiento.",
+          "riskSignal": "Consultas sin seguimiento.",
+          "expectedEvidence": [
+            "Conversaciones",
+            "Mensajes de seguimiento"
+          ]
+        },
+        {
+          "id": "SAL-02",
+          "text": "¿Cómo registras las personas interesadas?",
+          "dimensionIds": [
+            "commercial"
+          ],
+          "followUps": [
+            "¿Utilizas notas o una hoja de cálculo?",
+            "¿Cómo evitas perder contactos?"
+          ],
+          "advisorTip": "Evaluar el proceso, no exigir herramientas sofisticadas.",
+          "riskSignal": "No existe registro de prospectos.",
+          "expectedEvidence": [
+            "Registro de contactos",
+            "Herramienta utilizada"
+          ]
+        },
+        {
+          "id": "SAL-03",
+          "text": "¿Cómo sabes actualmente si una publicación o actividad genera ventas?",
+          "dimensionIds": [
+            "commercial",
+            "demand"
+          ],
+          "followUps": [
+            "¿Utilizas enlaces diferenciados?",
+            "¿Preguntas cómo te encontraron?",
+            "¿Tienes estadísticas?"
+          ],
+          "advisorTip": "Distinguir medición verificable de percepción.",
+          "riskSignal": "Ausencia de atribución comercial.",
+          "expectedEvidence": [
+            "Estadísticas",
+            "Enlaces",
+            "Registro de ventas"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "resources",
+      "title": "Recursos, delegación y presupuesto",
+      "durationMinutes": 6,
+      "purpose": "Determinar responsabilidades y restricciones.",
+      "questions": [
+        {
+          "id": "RES-01",
+          "text": "¿Qué actividades quieres que Metamag asuma por completo y cuáles realizarías tú?",
+          "dimensionIds": [
+            "sustainability",
+            "technology"
+          ],
+          "followUps": [
+            "¿Quién preparará el contenido experto?",
+            "¿Quién aprobará los materiales?",
+            "¿Quién atenderá a los participantes?"
+          ],
+          "advisorTip": "Distinguir desconocimiento, falta de tiempo y preferencia por delegar.",
+          "riskSignal": "Alcance indefinido.",
+          "expectedEvidence": [
+            "Responsabilidades acordadas"
+          ]
+        },
+        {
+          "id": "RES-02",
+          "text": "¿Qué herramientas, cuentas y recursos tienes disponibles?",
+          "dimensionIds": [
+            "technology"
+          ],
+          "followUps": [
+            "¿Tienes cuentas publicitarias?",
+            "¿Dispones de sitio web o dominio?",
+            "¿Qué plataformas de reunión utilizas?"
+          ],
+          "advisorTip": "No solicitar contraseñas durante la reunión.",
+          "riskSignal": "Dependencias de accesos y licencias.",
+          "expectedEvidence": [
+            "Inventario de cuentas",
+            "Recursos disponibles"
+          ]
+        },
+        {
+          "id": "RES-03",
+          "text": "¿Qué inversión podrías sostener durante 30 días sin depender de ventas inmediatas?",
+          "dimensionIds": [
+            "sustainability"
+          ],
+          "followUps": [
+            "¿Qué monto destinarías a publicidad?",
+            "¿Qué monto a servicios profesionales?",
+            "¿Existe un límite total?"
+          ],
+          "advisorTip": "Separar honorarios, publicidad, licencias e impuestos.",
+          "riskSignal": "Presupuesto condicionado a retornos inmediatos.",
+          "expectedEvidence": [
+            "Rango presupuestal",
+            "Restricciones"
+          ]
+        },
+        {
+          "id": "RES-04",
+          "text": "¿Qué fechas y compromisos no pueden modificarse?",
+          "dimensionIds": [
+            "sustainability"
+          ],
+          "followUps": [
+            "¿Cuándo podría realizarse la masterclass?",
+            "¿Qué días puedes ensayar?",
+            "¿Cuánto tiempo necesitas para aprobar materiales?"
+          ],
+          "advisorTip": "Comprobar viabilidad del cronograma.",
+          "riskSignal": "Plazos incompatibles con la preparación.",
+          "expectedEvidence": [
+            "Fechas",
+            "Disponibilidad"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "closing",
+      "title": "Cierre y compromisos",
+      "durationMinutes": 4,
+      "purpose": "Validar hallazgos y definir próximos pasos.",
+      "questions": [
+        {
+          "id": "CLS-01",
+          "text": "De las dificultades que identificamos, ¿cuál necesitas resolver primero?",
+          "dimensionIds": [],
+          "followUps": [
+            "¿Qué cambiaría si resolvemos esa dificultad?",
+            "¿Qué podría esperar hasta una segunda etapa?"
+          ],
+          "advisorTip": "Presentar hallazgos concretos, no soluciones predeterminadas.",
+          "riskSignal": "Prioridades sin consenso.",
+          "expectedEvidence": [
+            "Prioridad acordada"
+          ]
+        },
+        {
+          "id": "CLS-02",
+          "text": "¿Qué actividad pequeña podrías realizar en los próximos siete días para preparar el lanzamiento?",
+          "dimensionIds": [
+            "sustainability"
+          ],
+          "followUps": [
+            "¿Qué entregarías?",
+            "¿En qué fecha?",
+            "¿Qué apoyo necesitas?"
+          ],
+          "advisorTip": "Definir un compromiso verificable y proporcional.",
+          "riskSignal": "Compromisos vagos.",
+          "expectedEvidence": [
+            "Acción",
+            "Responsable",
+            "Fecha"
+          ]
+        },
+        {
+          "id": "CLS-03",
+          "text": "¿Qué necesitarías revisar para aprobar una propuesta de Metamag?",
+          "dimensionIds": [],
+          "followUps": [
+            "¿Quién toma la decisión?",
+            "¿Qué aspectos evaluarás?",
+            "¿Cuándo podríamos revisar la propuesta?"
+          ],
+          "advisorTip": "Cerrar con siguiente paso definido.",
+          "riskSignal": "No existe un proceso de decisión claro.",
+          "expectedEvidence": [
+            "Responsable",
+            "Fecha de seguimiento",
+            "Criterios de aprobación"
+          ]
+        }
+      ]
+    }
+  ],
+  "maturityModel": {
+    "id": "metamag-maturity-v1",
+    "scoreRangePerDimension": [
+      0,
+      3
+    ],
+    "maximumScore": 18,
+    "requireAllDimensionsForDefinitiveLevel": true,
+    "levels": [
+      {
+        "id": 1,
+        "name": "Exploración",
+        "minScore": 0,
+        "maxScore": 5,
+        "focus": "Construir fundamentos y capacidades iniciales.",
+        "potentialServices": [
+          "Diagnóstico y planificación",
+          "Propuesta de valor",
+          "Identidad visual básica",
+          "Capacitación",
+          "Configuración de canales",
+          "Seguimiento comercial inicial"
+        ],
+        "progressionRequirements": [
+          "Realizar acciones promocionales verificables",
+          "Establecer una rutina sostenible",
+          "Registrar consultas e interesados",
+          "Contar con un proceso de respuesta"
+        ]
+      },
+      {
+        "id": 2,
+        "name": "Activación",
+        "minScore": 6,
+        "maxScore": 10,
+        "focus": "Validar audiencia y establecer procesos repetibles.",
+        "potentialServices": [
+          "Estrategia de contenidos",
+          "Producción gráfica",
+          "Publicidad piloto",
+          "Landing page",
+          "Captación de registros",
+          "Analítica inicial"
+        ],
+        "progressionRequirements": [
+          "Identificar señales de demanda externa",
+          "Medir captación y conversiones",
+          "Ejecutar una campaña o evento piloto",
+          "Documentar resultados"
+        ]
+      },
+      {
+        "id": 3,
+        "name": "Lanzamiento estructurado",
+        "minScore": 11,
+        "maxScore": 14,
+        "focus": "Ejecutar campañas y eventos medibles.",
+        "potentialServices": [
+          "Producción integral de masterclass",
+          "Campañas multietapa",
+          "Automatización de comunicaciones",
+          "Optimización de conversiones",
+          "Operación técnica de eventos"
+        ],
+        "progressionRequirements": [
+          "Repetir operaciones con consistencia",
+          "Comparar resultados entre campañas",
+          "Documentar procedimientos",
+          "Reducir dependencias manuales"
+        ]
+      },
+      {
+        "id": 4,
+        "name": "Crecimiento sistemático",
+        "minScore": 15,
+        "maxScore": 18,
+        "focus": "Optimizar y escalar procesos basados en datos.",
+        "potentialServices": [
+          "Gestión recurrente",
+          "Automatizaciones avanzadas",
+          "Experimentación comercial",
+          "Analítica avanzada",
+          "Escalamiento de campañas",
+          "Desarrollo de nuevos productos"
+        ],
+        "progressionRequirements": [
+          "Mantener medición continua",
+          "Optimizar costos",
+          "Revisar indicadores periódicamente",
+          "Actualizar estrategia con evidencia"
+        ]
+      }
+    ],
+    "assessmentRules": [
+      "No asignar cero automáticamente a dimensiones sin evaluar.",
+      "No generar nivel definitivo con dimensiones pendientes.",
+      "Cada puntuación requiere justificación.",
+      "Registrar nivel de confianza de la evidencia.",
+      "Permitir ajuste manual justificado.",
+      "No equiparar madurez con paquete comercial.",
+      "Identificar brechas críticas independientemente del puntaje total."
+    ]
+  },
+  "reportConfiguration": {
+    "clientPdf": {
+      "title": "Diagnóstico de madurez comercial y operativa",
+      "includeSections": [
+        "executiveSummary",
+        "currentMaturityLevel",
+        "dimensionScores",
+        "strengths",
+        "verifiedGaps",
+        "criticalRisks",
+        "recommendedServices",
+        "maturityRoadmap",
+        "nextSteps",
+        "methodologyAndLimitations"
+      ],
+      "excludeFields": [
+        "advisorPrivateNotes",
+        "internalPricing",
+        "commercialMargin",
+        "unverifiedInternalAssumptions"
+      ]
+    },
+    "internalReport": {
+      "includeFullAnswers": true,
+      "includeEvidence": true,
+      "includePrivateNotes": true,
+      "includeUncertainties": true,
+      "includeCommercialRecommendations": true
+    }
+  }
+}

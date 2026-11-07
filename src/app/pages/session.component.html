@@ -1,0 +1,289 @@
+@if (session(); as current) {
+  @if (formDefinition(); as form) {
+    <div class="workspace-shell">
+      <header class="workspace-topbar screen-only">
+        <a class="brand" routerLink="/" aria-label="Volver a diagnósticos">
+          <span class="brand-mark">M</span><span>METAMAG <strong>DISCOVERY</strong></span>
+        </a>
+        <div class="workspace-title">
+          <a routerLink="/">Diagnósticos</a><span aria-hidden="true">/</span>
+          <strong>{{ current.project }}</strong><span>·</span><span>{{ current.clientName }}</span>
+        </div>
+        <span class="save-state"><span aria-hidden="true">●</span> Guardado en este dispositivo</span>
+      </header>
+
+      <nav class="workspace-nav screen-only" aria-label="Secciones del diagnóstico">
+        <a [routerLink]="['/session', current.id, 'interview']" [class.active]="view() === 'interview'">01 <span>Entrevista</span></a>
+        <a [routerLink]="['/session', current.id, 'diagnosis']" [class.active]="view() === 'diagnosis'">02 <span>Diagnóstico</span></a>
+        <a [routerLink]="['/session', current.id, 'client-report']" [class.active]="view() === 'client-report'">03 <span>Informe cliente</span></a>
+        <a [routerLink]="['/session', current.id, 'internal-report']" [class.active]="view() === 'internal-report'">04 <span>Informe interno</span></a>
+        <span class="nav-progress">{{ current.updatedAt | date:'d MMM, h:mm a' }}</span>
+      </nav>
+
+      @if (view() === 'interview') {
+        <main class="interview-layout screen-only">
+          <aside class="stage-sidebar" aria-label="Etapas de la entrevista">
+            <div class="side-label">GUÍA DE CONVERSACIÓN</div>
+            <div class="overall-progress"><span>{{ form.sections.length }} etapas</span><span>{{ questionProgress(current, form) }}</span></div>
+            <div class="progress-track"><span [style.width.%]="questionProgressPercent(current, form)"></span></div>
+            @for (section of form.sections; track section.id; let i = $index) {
+              <button class="stage-item" type="button" [class.selected]="current.activeSectionId === section.id" (click)="setSection(section.id)">
+                <span class="stage-number">{{ (i + 1).toString().padStart(2, '0') }}</span>
+                <span class="stage-text"><strong>{{ section.title }}</strong><small>{{ sectionAnsweredCount(section.id) }}/{{ sectionQuestionCount(section.id) }} respondidas</small></span>
+                @if (sectionAnsweredCount(section.id) === sectionQuestionCount(section.id) && sectionQuestionCount(section.id) > 0) { <span class="stage-check" aria-label="Etapa completa">✓</span> }
+              </button>
+            }
+            <div class="sidebar-privacy"><span aria-hidden="true">◇</span> Las notas privadas solo aparecen en el informe interno.</div>
+          </aside>
+
+          <section class="interview-main" aria-live="polite">
+            @if (activeSection(); as section) {
+              <div class="section-kicker">ETAPA {{ sectionIndex(form, section.id) }} DE {{ form.sections.length }} <span>·</span> {{ section.durationMinutes }} MIN</div>
+              <h1 class="section-title">{{ section.title }}</h1>
+              <p class="section-purpose">{{ section.purpose }}</p>
+              @if (section.openingScript) { <div class="opening-script"><span aria-hidden="true">“</span>{{ section.openingScript }}</div> }
+              @if (currentQuestion(); as question) {
+                <article class="question-card">
+                  <div class="question-topline">
+                    <span class="question-id">{{ question.id }}</span>
+                    <span class="question-status" [attr.data-status]="response.controls.status.value">{{ statusText(response.controls.status.value) }}</span>
+                  </div>
+                  <h2>{{ question.text }}</h2>
+                  @if (question.inputType === 'select') {
+                    <label class="field-label">Respuesta de selección
+                      <select [formControl]="response.controls.choice">
+                        <option value="">Selecciona una respuesta</option>
+                        @for (option of question.options ?? []; track $index) { <option [value]="option">{{ option }}</option> }
+                      </select>
+                    </label>
+                  }
+                  <label class="field-label">Respuesta / detalle concreto
+                    <textarea rows="4" [formControl]="response.controls.answer" placeholder="Registra hechos, ejemplos, fechas o cantidades que el cliente pueda precisar…"></textarea>
+                  </label>
+                  <label class="field-label">Evidencia observada o mencionada
+                    <textarea rows="3" [formControl]="response.controls.evidence" placeholder="Ej.: publicación del 12 de octubre, registro de consultas, enlace revisado…"></textarea>
+                  </label>
+                  <div class="field-grid">
+                    <label class="field-label">Nivel de evidencia
+                      <select [formControl]="response.controls.evidenceLevel">
+                        <option value="">Sin clasificar</option>
+                        @for (level of form.responseModel.evidenceLevels; track level.id) { <option [value]="level.id">{{ level.label }}</option> }
+                      </select>
+                    </label>
+                    <label class="field-label">Estado
+                      <select [formControl]="response.controls.status">
+                        <option value="pending">Pendiente</option>
+                        <option value="answered">Respondida</option>
+                        <option value="requires_verification">Requiere seguimiento</option>
+                        <option value="not_applicable">No aplica</option>
+                      </select>
+                    </label>
+                  </div>
+                  <label class="field-label private-field">Nota privada del asesor
+                    <textarea rows="2" [formControl]="response.controls.advisorPrivateNotes" placeholder="No se incluye en el informe para el cliente"></textarea>
+                  </label>
+                  <label class="check-line"><input type="checkbox" [formControl]="response.controls.followUpRequired"> Requiere seguimiento o verificación posterior</label>
+                </article>
+                <div class="question-controls">
+                  <span class="question-counter">Pregunta {{ currentIndex() + 1 }} de {{ visibleQuestions().length }} en esta etapa</span>
+                  <div class="button-row">
+                    <button class="button button-secondary" type="button" [disabled]="currentIndex() <= 0" (click)="moveQuestion(-1)">← Anterior</button>
+                    <button class="button button-primary" type="button" (click)="moveQuestion(1)">Siguiente →</button>
+                  </div>
+                </div>
+              } @else {
+                <div class="empty-state"><h3>Esta etapa no tiene preguntas visibles</h3><p>Revisa las respuestas condicionales o continúa con otra etapa.</p></div>
+              }
+            }
+          </section>
+
+          <aside class="context-panel">
+            @if (currentQuestion(); as question) {
+              <div class="context-label">ORIENTACIÓN PARA EL ASESOR</div>
+              <section class="context-block"><h3>Profundiza con</h3>
+                @for (followUp of question.followUps; track $index) { <p class="prompt-line"><span>↳</span>{{ followUp }}</p> }
+              </section>
+              <section class="context-block example-block"><h3>Ejemplo de respuesta concreta</h3><p>{{ exampleAnswer(question) }}</p></section>
+              <section class="context-block"><h3>Evidencias esperadas</h3>
+                <ul class="evidence-list">@for (item of question.expectedEvidence; track $index) { <li>{{ item }}</li> }</ul>
+              </section>
+              <section class="context-block signal-block"><h3>Señal a observar</h3><p>{{ question.advisorTip }}</p></section>
+              <section class="context-block risk-block"><h3>Riesgo potencial</h3><p>{{ question.riskSignal }}</p></section>
+              <p class="no-score-note">Una respuesta pendiente no equivale a una puntuación de cero.</p>
+            }
+          </aside>
+        </main>
+      }
+
+      @if (view() === 'diagnosis') {
+        <main class="diagnosis-page screen-only">
+          <div class="page-heading">
+            <div><div class="eyebrow">LECTURA VALIDADA POR EL ASESOR</div><h1>Diagnóstico de madurez</h1><p>Asigna una puntuación solo cuando puedas justificarla con evidencia. La ausencia de información permanece sin evaluar.</p></div>
+            @if (result(); as evaluation) {
+              <div class="score-card"><span>PUNTAJE OBSERVADO</span><strong>{{ evaluation.score }}<small> / 18</small></strong><em>{{ evaluation.assessedDimensions }} de 6 dimensiones verificadas</em></div>
+            }
+          </div>
+          @if (result(); as evaluation) {
+            <section class="maturity-summary" [class.provisional]="!evaluation.definitive">
+              <div class="maturity-icon">{{ evaluation.definitive ? '✓' : '…' }}</div>
+              <div class="maturity-copy">
+                <span class="eyebrow">{{ evaluation.definitive ? 'NIVEL VALIDADO' : 'RESULTADO PROVISIONAL' }}</span>
+                @if (evaluation.level) {
+                  <h2>Nivel {{ evaluation.level.id }} · {{ evaluation.level.name }}</h2>
+                  <p>{{ evaluation.level.focus }}</p>
+                } @else if (evaluation.provisionalRange) {
+                  <h2>Rango posible: {{ evaluation.provisionalRange.minimum.name }} — {{ evaluation.provisionalRange.maximum.name }}</h2>
+                  <p>Completa las dimensiones pendientes para emitir una clasificación. El puntaje faltante no se considera cero.</p>
+                }
+                @if (evaluation.criticalConstraint) { <p class="critical-constraint"><strong>Control de brecha crítica:</strong> {{ evaluation.criticalConstraint }}</p> }
+              </div>
+              <div class="confidence-pill">Confianza {{ confidenceLabel(evaluation.confidence) }}</div>
+            </section>
+          }
+          <div class="assessment-grid">
+            @for (dimension of form.dimensions; track dimension.id) {
+              @let assessment = current.assessments[dimension.id];
+              <article class="dimension-card">
+                <div class="dimension-heading"><div><span class="dimension-id">{{ dimension.id }}</span><h2>{{ dimension.name }}</h2></div>
+                  <label class="score-select-label">Puntaje
+                    <select [value]="assessment?.score ?? ''" (change)="setAssessmentScore(dimension.id, $any($event.target).value)" [attr.aria-label]="'Puntaje de ' + dimension.name">
+                      <option value="">Sin evaluar</option><option value="0">0 · No demostrada</option><option value="1">1 · Puntual</option><option value="2">2 · Repetible</option><option value="3">3 · Consistente</option>
+                    </select>
+                  </label>
+                </div>
+                <div class="score-scale"><span>0 No hay capacidad operativa</span><span>1 Puntual / requiere ayuda</span><span>2 Funcional / repetible</span><span>3 Consistente / medible</span></div>
+                <div class="dimension-state" [attr.data-state]="assessment.state">{{ evaluationStateLabel(assessment.state) }}</div>
+                <label class="field-label">Justificación del asesor <textarea rows="2" [value]="assessment.justification" (input)="patchAssessment(dimension.id, { justification: $any($event.target).value })" placeholder="¿Qué hechos respaldan esta puntuación?"></textarea></label>
+                <label class="field-label">Evidencia que respalda la evaluación <textarea rows="2" [value]="assessment.evidence" (input)="patchAssessment(dimension.id, { evidence: $any($event.target).value })" placeholder="Describe o identifica evidencia; no agregues datos no verificados"></textarea></label>
+                <div class="dimension-footer">
+                  <label class="field-label">Confianza
+                    <select [value]="assessment.confidence" (change)="patchAssessment(dimension.id, { confidence: $any($event.target).value })">
+                      <option value="">Sin evaluar</option><option value="low">Baja</option><option value="medium">Media</option><option value="high">Alta</option>
+                    </select>
+                  </label>
+                  <label class="check-line critical-toggle"><input type="checkbox" [checked]="assessment.criticalGap" (change)="patchAssessment(dimension.id, { criticalGap: $any($event.target).checked })"> Brecha crítica</label>
+                </div>
+              </article>
+            }
+          </div>
+          <section class="manual-level-panel">
+            <div><div class="eyebrow">TRAZABILIDAD</div><h2>Ajuste manual de nivel</h2><p>Solo si el asesor tiene razones explícitas que justifiquen apartarse del rango numérico.</p></div>
+            <div class="manual-controls">
+              <label class="field-label">Nivel seleccionado
+                <select [value]="current.manualLevelId ?? ''" (change)="setManualLevel($any($event.target).value)" [disabled]="!result()?.definitive">
+                  <option value="">Usar bandas del modelo</option>@for (level of form.maturityModel.levels; track level.id) { <option [value]="level.id">Nivel {{ level.id }} · {{ level.name }}</option> }
+                </select>
+              </label>
+              <label class="field-label">Justificación obligatoria (mínimo 12 caracteres)
+                <textarea rows="2" [value]="current.manualLevelJustification" (input)="updateManualJustification($any($event.target).value)" [disabled]="current.manualLevelId === null"></textarea>
+              </label>
+            </div>
+          </section>
+          <section class="services-section">
+            <div class="section-heading"><div><div class="eyebrow">DECISIÓN COMERCIAL INDEPENDIENTE</div><h2>Servicios potenciales</h2><p>La madurez no obliga a contratar una secuencia ni un paquete. Revisa y justifica cada opción.</p></div></div>
+            <div class="service-list">
+              @for (service of services; track service.id) {
+                @let recommendation = current.recommendations[service.id];
+                <article class="service-card">
+                  <label class="service-select"><input type="checkbox" [checked]="recommendation?.selected ?? false" (change)="updateRecommendation(service.id, { selected: $any($event.target).checked })"><span class="sr-only">Seleccionar {{ service.name }}</span></label>
+                  <div class="service-main"><div class="service-title"><h3>{{ service.name }}</h3><span class="service-status">{{ recommendationStatus(recommendation?.status ?? 'requires_validation') }}</span></div>
+                    <p>{{ service.description }}</p><small>{{ service.problem }} · Complejidad {{ service.complexity }} · {{ service.duration }}</small>
+                    <label class="field-label">Justificación
+                      <textarea rows="2" [value]="recommendation?.justification ?? ''" (input)="updateRecommendation(service.id, { justification: $any($event.target).value })"></textarea>
+                    </label>
+                  </div>
+                  <label class="field-label service-state-label">Estado
+                    <select [value]="recommendation?.status ?? 'requires_validation'" (change)="updateRecommendation(service.id, { status: $any($event.target).value })">
+                      <option value="recommended_now">Recomendado ahora</option><option value="recommended_conditionally">Recomendado condicionado</option><option value="recommended_next_stage">Siguiente etapa</option><option value="not_priority">No prioritario</option><option value="requires_validation">Requiere validación</option>
+                    </select>
+                  </label>
+                </article>
+              }
+            </div>
+          </section>
+          <section class="separation-panel">
+            <div class="eyebrow">MADUREZ ≠ DELEGACIÓN</div>
+            <h2>Contexto de ejecución de esta iniciativa</h2>
+            <p>Un cliente en Exploración puede delegar una producción integral. En ese caso, el alcance contempla preparación, ensayos y contingencias, sin alterar la madurez interna evaluada.</p>
+            <div class="form-grid">
+              <label>Complejidad de la iniciativa<select [value]="current.initiativeComplexity" (change)="updateSessionField('initiativeComplexity', $any($event.target).value)"><option value="">Por definir</option><option value="low">Baja</option><option value="medium">Media</option><option value="high">Alta</option></select></label>
+              <label>Capacidad de ejecución interna<textarea rows="2" [value]="current.internalCapacity" (input)="updateSessionField('internalCapacity', $any($event.target).value)"></textarea></label>
+              <label>Responsabilidades delegadas a Metamag<textarea rows="2" [value]="current.delegatedResponsibilities" (input)="updateSessionField('delegatedResponsibilities', $any($event.target).value)"></textarea></label>
+              <label>Presupuesto y plazo disponibles<textarea rows="2" [value]="current.budgetAndTimeline" (input)="updateSessionField('budgetAndTimeline', $any($event.target).value)" placeholder="Sin precios estimados automáticamente"></textarea></label>
+            </div>
+          </section>
+          <section class="roadmap-section">
+            <div class="section-heading"><div><div class="eyebrow">RUTA DE EVOLUCIÓN, NO PROMESA</div><h2>Roadmap por niveles</h2><p>Las transiciones indican capacidades y evidencias a construir; no garantizan resultados comerciales.</p></div></div>
+            <div class="roadmap-levels">@for (level of form.maturityModel.levels; track level.id) {
+              <article class="roadmap-level" [class.current-level]="result()?.level?.id === level.id">
+                <span class="roadmap-number">0{{ level.id }}</span><h3>{{ level.name }}</h3><p>{{ level.focus }}</p>
+                <span class="eyebrow">EVIDENCIAS PARA AVANZAR</span>
+                <ul>@for (requirement of level.progressionRequirements; track $index) { <li>{{ requirement }}</li> }</ul>
+                @if (result()?.level?.id === level.id) { <span class="current-tag">Nivel actual</span> }
+              </article>
+            }</div>
+            <form class="action-form" [formGroup]="actionForm" (ngSubmit)="addAction()">
+              <h3>Agregar acción verificable</h3>
+              <div class="form-grid">
+                <label>Acción concreta<input formControlName="title" placeholder="Ej. Revisar origen de consultas recientes"></label>
+                <label>Responsable<input formControlName="owner"></label>
+                <label>Evidencia esperada<input formControlName="expectedEvidence" placeholder="Qué permitirá confirmar el avance"></label>
+                <label>Plazo<input type="date" formControlName="dueDate"></label>
+                <label>Horizonte<select formControlName="horizon"><option [ngValue]="30">30 días</option><option [ngValue]="60">60 días</option><option [ngValue]="90">90 días</option></select></label>
+                <label>Prioridad<select formControlName="priority"><option value="high">Alta</option><option value="medium">Media</option><option value="low">Baja</option></select></label>
+              </div>
+              <button class="button button-secondary" type="submit">＋ Agregar acción</button>
+            </form>
+            @for (horizon of [30, 60, 90]; track horizon) {
+              <div class="action-horizon"><h3>{{ horizon }} días</h3>
+                @for (action of actionsFor(horizon); track action.id) {
+                  <article class="action-row">
+                    <div><strong>{{ action.title }}</strong><p>{{ action.owner }} · Evidencia: {{ action.expectedEvidence }}{{ action.dueDate ? ' · ' + action.dueDate : '' }}</p></div>
+                    <select [value]="action.status" (change)="updateAction(action.id, { status: $any($event.target).value })" aria-label="Estado de la acción"><option value="pending">Pendiente</option><option value="in_progress">En curso</option><option value="done">Completada</option></select>
+                    <button class="icon-button" type="button" [attr.aria-label]="'Eliminar acción: ' + action.title" (click)="removeAction(action.id)">×</button>
+                  </article>
+                } @empty { <p class="muted">Sin acciones registradas.</p> }
+              </div>
+            }
+          </section>
+        </main>
+      }
+
+      @if (view() === 'client-report' && clientReport(); as report) {
+        <main class="report-page client-report">
+          <div class="report-toolbar screen-only"><div><div class="eyebrow">VISTA PREVIA · COMPARTIBLE CON EL CLIENTE</div><h1>Informe de diagnóstico</h1><p>Las notas privadas del asesor y las preguntas internas no se incluyen en este informe.</p></div><button class="button button-primary" type="button" (click)="printReport()">Vista previa / Guardar como PDF</button></div>
+          <article class="client-document">
+            <header class="report-cover"><div class="report-brand"><span class="brand-mark">M</span><span>METAMAG <strong>AGENCY</strong></span></div><div class="eyebrow">DIAGNÓSTICO CONSULTIVO</div><h1>{{ form.reportConfiguration.clientPdf.title }}</h1><div class="cover-rule"></div><p class="cover-client">{{ report.clientName }}</p><p>{{ report.project }}{{ report.organization ? ' · ' + report.organization : '' }}</p><p>{{ report.meetingDate | date:'d MMMM y' }}</p><div class="cover-foot">METAMAG AGENCY S.A.S. BIC · Documento de trabajo</div></header>
+            <section class="report-section"><div class="eyebrow">01 · RESUMEN EJECUTIVO</div><h2>Una lectura para decidir próximos pasos</h2><p>{{ report.objective || 'El objetivo de esta conversación se encuentra pendiente de validación.' }}</p><div class="report-level"><span>Nivel de madurez {{ result()?.definitive ? 'validado' : 'provisional' }}</span><strong>{{ result()?.definitive ? report.levelName : 'Rango posible: ' + result()?.provisionalRange?.minimum?.name + ' — ' + result()?.provisionalRange?.maximum?.name }}</strong><p>{{ report.levelFocus }}</p><small>Confianza: {{ report.confidence }} · Puntaje observado: {{ report.score }} / 18</small></div></section>
+            <section class="report-section"><div class="eyebrow">02 · METODOLOGÍA Y ALCANCE</div><h2>Cómo interpretar esta lectura</h2><p>Seis dimensiones se puntúan de 0 a 3 mediante validación del asesor y evidencia disponible. Las respuestas abiertas no se califican automáticamente. Un dato pendiente no se interpreta como capacidad inexistente.</p><p>Las bandas y el instrumento son hipótesis operativas de METAMAG; no constituyen una prueba psicométrica ni una promesa de resultados.</p></section>
+            <section class="report-section"><div class="eyebrow">03 · CAPACIDADES EVALUADAS</div><h2>Seis dimensiones</h2><table class="report-table"><thead><tr><th>Dimensión</th><th>Puntaje</th><th>Justificación y evidencia compartible</th></tr></thead><tbody>@for (dimension of report.dimensions; track dimension.name) { <tr><td>{{ dimension.name }}</td><td>{{ dimension.score === null ? 'Sin evaluar' : dimension.score + ' / 3' }}</td><td>{{ dimension.justification || dimension.evidence || 'Evidencia insuficiente para emitir una conclusión.' }}</td></tr> }</tbody></table></section>
+            @if (report.strengths.length) { <section class="report-section"><div class="eyebrow">04 · FORTALEZAS</div><h2>Capacidades respaldadas por evidencia</h2>@for (item of report.strengths; track item.dimensionId) { <div class="report-bullet"><strong>{{ item.dimensionId }}</strong><p>{{ item.evidence }}</p></div> }</section> }
+            @if (report.gaps.length) { <section class="report-section"><div class="eyebrow">05 · BRECHAS Y RIESGOS</div><h2>Aspectos prioritarios a resolver</h2>@for (item of report.gaps; track item.dimensionId) { <div class="report-bullet"><strong>{{ item.dimensionId }}{{ item.critical ? ' · Brecha crítica' : '' }}</strong><p>{{ item.justification || 'Requiere evidencia y definición de una acción.' }}</p></div> }</section> }
+            <section class="report-section"><div class="eyebrow">06 · RECOMENDACIONES</div><h2>Servicios potenciales</h2>@if (report.services.length) { @for (service of report.services; track service.name) { <div class="report-bullet"><strong>{{ service.name }} · {{ service.status }}</strong><p>{{ service.justification }}</p></div> } } @else { <p>No hay servicios seleccionados. Las decisiones comerciales se validarán por separado con el cliente.</p> }</section>
+            <section class="report-section"><div class="eyebrow">07 · ROADMAP</div><h2>Niveles de evolución</h2><div class="report-roadmap">@for (level of report.roadmap; track level.name) { <div><strong>{{ level.name }}</strong><p>{{ level.focus }}</p><ul>@for (requirement of level.requirements; track $index) { <li>{{ requirement }}</li> }</ul></div> }</div></section>
+            <section class="report-section"><div class="eyebrow">08 · ACCIONES Y RESPONSABILIDADES</div><h2>Próximos pasos acordados</h2>@if (report.actions.length) { <table class="report-table"><thead><tr><th>Plazo</th><th>Acción</th><th>Responsable</th><th>Evidencia esperada</th></tr></thead><tbody>@for (action of report.actions; track action.id) { <tr><td>{{ action.horizon }} días</td><td>{{ action.title }}</td><td>{{ action.owner }}</td><td>{{ action.expectedEvidence }}</td></tr> }</tbody></table> } @else { <p>Las acciones y responsables están pendientes de definición conjunta.</p> }</section>
+            <footer class="report-disclaimer"><strong>Limitaciones</strong><p>Este diagnóstico refleja información disponible en una conversación y evidencias revisadas a la fecha. No garantiza ventas, crecimiento ni resultados de campaña. Las capacidades no verificadas deben confirmarse antes de tomar decisiones de inversión o calendario.</p></footer>
+          </article>
+        </main>
+      }
+
+      @if (view() === 'internal-report') {
+        <main class="report-page internal-report">
+          <div class="report-toolbar screen-only"><div><div class="eyebrow">USO INTERNO · CONFIDENCIAL</div><h1>Diagnóstico completo</h1><p>Incluye respuestas y notas privadas. No compartir con el cliente.</p></div><div class="button-row"><button class="button button-secondary" type="button" (click)="saveInternalJson()">Descargar datos internos JSON</button><button class="button button-primary" type="button" (click)="printReport()">Imprimir informe interno</button></div></div>
+          <article class="internal-document">
+            <div class="eyebrow">METAMAG DISCOVERY · INFORME INTERNO</div><h1>{{ current.project }} — {{ current.clientName }}</h1>
+            <p>{{ current.meetingDate }} · Asesor: {{ current.advisor || 'Sin asignar' }}</p>
+            <section class="report-section"><h2>Contexto, complejidad y delegación</h2><p><strong>Objetivo:</strong> {{ current.objective }}</p><p><strong>Estado conocido:</strong> {{ current.knownState }}</p><p><strong>Complejidad:</strong> {{ current.initiativeComplexity || 'Pendiente' }}</p><p><strong>Capacidad interna:</strong> {{ current.internalCapacity || 'Pendiente' }}</p><p><strong>Delegación:</strong> {{ current.delegatedResponsibilities || 'Pendiente' }}</p><p><strong>Presupuesto/plazo:</strong> {{ current.budgetAndTimeline || 'Pendiente' }}</p></section>
+            <section class="report-section"><h2>Evaluación por dimensión</h2>@for (dimension of form.dimensions; track dimension.id) { @let assessment = current.assessments[dimension.id]; <div class="internal-dimension"><h3>{{ dimension.name }} · {{ assessment.score === null ? 'Sin evaluar' : assessment.score + ' / 3' }}</h3><p><strong>Estado:</strong> {{ evaluationStateLabel(assessment.state) }} · <strong>Confianza:</strong> {{ confidenceLabel(assessment.confidence) }}{{ assessment.criticalGap ? ' · Brecha crítica' : '' }}</p><p><strong>Justificación:</strong> {{ assessment.justification || 'Pendiente' }}</p><p><strong>Evidencia:</strong> {{ assessment.evidence || 'Pendiente' }}</p></div> }</section>
+            <section class="report-section"><h2>Respuestas, evidencias e incertidumbres</h2>@for (section of form.sections; track section.id) { <h3>{{ section.title }}</h3>@for (question of section.questions; track question.id) { @let answer = responseFor(current, question.id); <div class="internal-question"><strong>{{ question.id }} · {{ question.text }}</strong><p><strong>Respuesta:</strong> {{ answer.choice }} {{ answer.answer || 'Sin respuesta registrada' }}</p><p><strong>Evidencia:</strong> {{ answer.evidence || 'No registrada' }}{{ answer.evidenceLevel ? ' · ' + evidenceLabel(answer.evidenceLevel) : '' }}</p><p><strong>Estado:</strong> {{ getQuestionStatus(current, question.id) }}{{ answer.followUpRequired ? ' · Requiere seguimiento' : '' }}</p><p><strong>Nota privada:</strong> {{ answer.advisorPrivateNotes || 'Ninguna' }}</p></div> } }</section>
+            <section class="report-section"><h2>Recomendaciones y decisiones comerciales</h2>@for (service of services; track service.id) { @let recommendation = current.recommendations[service.id]; @if (recommendation) { <p><strong>{{ service.name }}</strong> · {{ recommendationStatus(recommendation.status) }} · {{ recommendation.selected ? 'Seleccionado' : 'No seleccionado' }} — {{ recommendation.justification }}</p> } }</section>
+            <section class="report-section"><h2>Roadmap, acciones y seguimiento</h2>@for (action of current.actions; track action.id) { <p><strong>{{ action.horizon }} días · {{ action.title }}</strong> · {{ action.owner }} · {{ action.status }} · {{ action.expectedEvidence }}</p> } @empty { <p>Sin acciones registradas.</p> }</section>
+            <section class="report-section"><strong>Advertencia:</strong> Este documento contiene notas de trabajo del asesor y no debe compartirse como informe de cliente.</section>
+          </article>
+        </main>
+      }
+    </div>
+  }
+} @else {
+  <main class="load-error"><h1>Sesión no encontrada</h1><p>Puede que haya sido eliminada o aún no se haya cargado.</p><a class="button button-primary" routerLink="/">Volver a diagnósticos</a></main>
+}
