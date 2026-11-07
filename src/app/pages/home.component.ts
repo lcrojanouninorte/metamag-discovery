@@ -27,7 +27,7 @@ import { SessionStore } from '../core/session-store';
             <span aria-hidden="true">＋</span> Crear diagnóstico
           </button>
           @if (forms.form()?.formId === 'metamag-discovery-demo-2026') {
-            <button class="button button-secondary" type="button" (click)="openExampleReport()">Ver informe de ejemplo (ficticio)</button>
+            <button class="button button-secondary" type="button" (click)="openExampleReport()">Ver ejemplo de informe</button>
           }
           <div class="privacy-note"><span aria-hidden="true">◇</span> Tus datos permanecen en este dispositivo. No se envían a ningún servidor.</div>
         </section>
@@ -103,7 +103,7 @@ import { SessionStore } from '../core/session-store';
         </section>
 
         <footer class="home-footer">
-          <div><span class="eyebrow">Metodología propuesta</span><p>La ruta de cinco niveles se valida con evidencias. La contratación de servicios se decide por separado, según brechas, alcance y restricciones.</p></div>
+          <div><span class="eyebrow">Metodología de diagnóstico</span><p>La ruta de cinco niveles se valida con evidencias. La contratación de servicios se decide por separado, según brechas, alcance y restricciones.</p></div>
           <div class="level-chips">
             <span>Nivel 1 · Exploración</span><span>Nivel 2 · Activación</span>
             <span>Nivel 3 · Tracción</span><span>Nivel 4 · Optimización</span><span>Nivel 5 · Escalamiento</span>

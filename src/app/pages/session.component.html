@@ -1,6 +1,6 @@
 @if (session(); as current) {
   @if (formDefinition(); as form) {
-    <div class="workspace-shell">
+    <div class="workspace-shell" [class.combined-report]="view() === 'combined-report'">
       <header class="workspace-topbar screen-only">
         <a class="brand" routerLink="/" aria-label="Volver a diagnósticos">
           <span class="brand-mark">M</span><span>METAMAG <strong>DISCOVERY</strong></span>
@@ -18,6 +18,7 @@
         <a [routerLink]="['/session', current.id, 'diagnosis']" [class.active]="view() === 'diagnosis'">03 <span>Diagnóstico</span></a>
         <a [routerLink]="['/session', current.id, 'client-report']" [class.active]="view() === 'client-report'">04 <span>Informe cliente</span></a>
         <a [routerLink]="['/session', current.id, 'internal-report']" [class.active]="view() === 'internal-report'">05 <span>Informe interno</span></a>
+        <a [routerLink]="['/session', current.id, 'proposal']" [class.active]="view() === 'proposal'">06 <span>Propuesta</span></a>
         <span class="nav-progress">{{ current.updatedAt | date:'d MMM, h:mm a' }}</span>
       </nav>
 
@@ -411,6 +412,10 @@
                 </article>
               }
             </div>
+            <div class="commercial-entry">
+              <div><strong>Una recomendación no es una cotización.</strong><p>La propuesta es opcional, editable e independiente del diagnóstico; solo incluye servicios que el asesor seleccione explícitamente.</p></div>
+              <button class="button button-primary" type="button" (click)="startProposal()">Preparar propuesta</button>
+            </div>
           </section>
           <section class="separation-panel">
             <div class="eyebrow">MADUREZ ≠ DELEGACIÓN</div>
@@ -460,9 +465,249 @@
         </main>
       }
 
-      @if (view() === 'client-report' && clientReport(); as report) {
+      @if (view() === 'proposal' || view() === 'combined-report') {
+        @if (current.commercialProposal; as proposal) {
+          @if (activeAlternative(); as option) {
+            @if (commercialCalculation(); as quote) {
+              @if (view() === 'proposal') {
+              <main class="proposal-page screen-only">
+                <div class="page-heading">
+                  <div><div class="eyebrow">MÓDULO COMERCIAL · CATÁLOGO {{ proposal.catalogVersion }}</div><h1>Propuesta comercial</h1><p>El diagnóstico sigue independiente. Esta propuesta contiene solo servicios que el asesor añadió explícitamente; las alternativas vacías no se completan automáticamente.</p></div>
+                  <span class="proposal-status" [attr.data-status]="proposal.status">{{ proposalStatusText(proposal.status) }}</span>
+                </div>
+                @if (notice) { <div class="storage-alert" role="status">{{ notice }}</div> }
+                <section class="commercial-settings">
+                  <div class="section-heading"><div><div class="eyebrow">CONFIGURACIÓN INTERNA · NO SE COMPARTE CON EL CLIENTE</div><h2>Parámetros de costeo</h2><p>Los valores horarios, costos, márgenes y análisis de rentabilidad son privados. Déjalos sin configurar si aún no hay datos aprobados; la rentabilidad se mostrará indeterminada.</p></div></div>
+                  <div class="commercial-settings-grid">
+                    @for (profile of proposal.settings.profiles; track profile.id) {
+                      <label class="field-label">{{ profile.name }} · costo interno por hora
+                        <input type="number" min="0" step="1000" [value]="profile.hourlyCostCOP ?? ''" (input)="updateProfileCost(profile.id, $any($event.target).value)" placeholder="COP · pendiente">
+                      </label>
+                    }
+                    <label class="field-label">Costos indirectos asignados (% del costo laboral)
+                      <input type="number" min="0" max="99.99" step="0.1" [value]="proposal.settings.indirectCostPercent ?? ''" (input)="updateCommercialSetting('indirectCostPercent', $any($event.target).value)" placeholder="Configurar incluso 0 %">
+                    </label>
+                    <label class="field-label">Contingencia (% de costo laboral + directos + indirectos)
+                      <input type="number" min="0" max="99.99" step="0.1" [value]="proposal.settings.contingencyPercent ?? ''" (input)="updateCommercialSetting('contingencyPercent', $any($event.target).value)" placeholder="Configurar incluso 0 %">
+                    </label>
+                    <label class="field-label">Margen objetivo (% del precio de venta)
+                      <input type="number" min="0" max="99.99" step="0.1" [value]="proposal.settings.targetMarginPercent ?? ''" (input)="updateCommercialSetting('targetMarginPercent', $any($event.target).value)" placeholder="Sin margen predeterminado">
+                    </label>
+                    <label class="field-label">Margen mínimo autorizado (%)
+                      <input type="number" min="0" max="99.99" step="0.1" [value]="proposal.settings.minimumAuthorizedMarginPercent ?? ''" (input)="updateCommercialSetting('minimumAuthorizedMarginPercent', $any($event.target).value)" placeholder="Configurar según política">
+                    </label>
+                    <label class="field-label">Impuesto aplicable (%)
+                      <input type="number" min="0" max="99.99" step="0.1" [value]="proposal.settings.taxPercent ?? ''" (input)="updateCommercialSetting('taxPercent', $any($event.target).value)" placeholder="Validar configuración fiscal">
+                    </label>
+                    <label class="field-label">Nota de impuestos y costos externos
+                      <textarea rows="2" [value]="proposal.taxNote" (input)="updateProposal({ taxNote: $any($event.target).value })" placeholder="Indica qué conceptos están sujetos a impuestos y qué debe confirmarse antes de compartir."></textarea>
+                    </label>
+                  </div>
+                  <p class="formula-note">Motor: costo laboral = horas por perfil × costo horario configurado; costo total = costo laboral + directos + indirectos asignados + contingencia; precio objetivo = costo total / (1 − margen sobre precio de venta). Las horas se estiman por actividad, nunca dividiendo el precio por una tarifa.</p>
+                </section>
+
+                <section class="commercial-alternatives" aria-labelledby="alternatives-title">
+                  <div class="section-heading"><div><div class="eyebrow">TRES ALTERNATIVAS EDITABLES</div><h2 id="alternatives-title">Define el alcance con criterio</h2><p>Esencial, Recomendada e Integral parten vacías. Seleccionar una no copia ni añade servicios a las otras.</p></div><button class="button button-secondary" type="button" (click)="saveProposalRevision()">Guardar versión</button></div>
+                  <div class="alternative-tabs" role="group" aria-label="Alternativa en edición">
+                    @for (alternative of proposal.alternatives; track alternative.id) {
+                      <button type="button" [class.active]="proposal.selectedAlternativeId === alternative.id" (click)="selectAlternative(alternative.id)">
+                        <strong>{{ alternative.name }}</strong><span>{{ alternative.lines.length }} servicios</span>
+                      </button>
+                    }
+                  </div>
+                  @if (proposal.revisions.length) {
+                    <details class="revision-history"><summary>Versiones guardadas · {{ proposal.revisions.length }}</summary>
+                      @for (revision of proposal.revisions; track revision.id) {
+                        <div class="revision-row"><span>{{ revision.savedAt | date:'d MMM y, h:mm a' }} · {{ proposalRevisionAlternativeName(revision) }} · {{ proposalStatusText(revision.status) }} · catálogo {{ revision.catalogVersion }}</span><button class="button button-secondary" type="button" (click)="restoreProposalRevision(revision.id)">Restaurar y revisar</button></div>
+                      }
+                    </details>
+                  }
+                  <label class="field-label">Justificación de esta alternativa
+                    <textarea rows="2" [value]="option.positioning" (input)="updateAlternative({ positioning: $any($event.target).value })"></textarea>
+                  </label>
+                  <div class="service-picker">
+                    <label class="field-label">Añadir un servicio seleccionado explícitamente
+                      <select value="" (change)="addCommercialService($any($event.target).value)">
+                        <option value="">Selecciona un servicio</option>
+                        @for (service of commercialCatalog; track service.id) {
+                          <option [value]="service.id">{{ service.name }}{{ service.recurring ? ' · recurrente' : '' }}</option>
+                        }
+                      </select>
+                    </label>
+                    <p>El catálogo no fija tarifas. Define cada precio según el alcance, la estimación y las condiciones acordadas.</p>
+                  </div>
+
+                  @for (line of option.lines; track line.id) {
+                    @let service = line.serviceSnapshot ?? commercialServiceDefinition(line.serviceId);
+                    <article class="commercial-line">
+                      <header class="commercial-line-heading"><div><span class="eyebrow">{{ service?.category }} · {{ service?.recurring ? 'COBRO RECURRENTE' : 'COBRO ÚNICO' }}</span><h3>{{ service?.name }}</h3><p>{{ service?.description }}</p></div><button class="button button-secondary" type="button" (click)="removeCommercialService(line.id)">Quitar servicio</button></header>
+                      <div class="commercial-line-grid">
+                        <label class="field-label">Cantidad<input type="number" min="1" step="1" [value]="line.quantity" (input)="updateCommercialLine(line.id, { quantity: +$any($event.target).value })"></label>
+                        <label class="field-label">Precio comercial propuesto por unidad · COP<input type="number" min="0" step="1000" [value]="line.proposedUnitPriceCOP ?? ''" placeholder="Ingresa la tarifa acordada" (input)="updateCommercialPrice(line.id, $any($event.target).value)"></label>
+                        <label class="field-label">Objetivo concreto<input type="text" [value]="line.objective" (input)="updateCommercialLine(line.id, { objective: $any($event.target).value })"></label>
+                        <label class="field-label full-width">Alcance incluido · actividades a realizar<textarea rows="3" [value]="line.scopeNotes" (input)="updateCommercialLine(line.id, { scopeNotes: $any($event.target).value })"></textarea></label>
+                        <label class="check-line"><input type="checkbox" [checked]="line.priceReviewed" (change)="updateCommercialLine(line.id, { priceReviewed: $any($event.target).checked })"> Confirmo que el precio propuesto refleja el alcance y las condiciones acordadas</label>
+                        <label class="check-line"><input type="checkbox" [checked]="line.discountEligible" (change)="updateCommercialLine(line.id, { discountEligible: $any($event.target).checked })"> Elegible para tarifa preferencial</label>
+                      </div>
+
+                      <h4>Entregables y aceptación</h4>
+                      @for (deliverable of line.deliverables; track deliverable.id) {
+                        <div class="deliverable-edit">
+                          <label class="field-label">Entregable<input [value]="deliverable.name" (input)="updateCommercialLineDeliverable(line.id, deliverable.id, { name: $any($event.target).value })"></label>
+                          <label class="field-label">Cantidad<input type="number" min="1" [value]="deliverable.quantity" (input)="updateCommercialLineDeliverable(line.id, deliverable.id, { quantity: +$any($event.target).value })"></label>
+                          <label class="field-label">Formato<input [value]="deliverable.format" (input)="updateCommercialLineDeliverable(line.id, deliverable.id, { format: $any($event.target).value })"></label>
+                          <label class="field-label">Criterio verificable de aceptación<textarea rows="2" [value]="deliverable.acceptanceCriteria" (input)="updateCommercialLineDeliverable(line.id, deliverable.id, { acceptanceCriteria: $any($event.target).value })"></textarea></label>
+                        </div>
+                      }
+                      <label class="field-label">Exclusiones explícitas · una por línea<textarea rows="3" [value]="line.exclusions.join('\n')" (input)="updateCommercialLine(line.id, { exclusions: splitLines($any($event.target).value) })"></textarea></label>
+
+                      <h4>Responsabilidades y condiciones de aceptación</h4>
+                      <div class="table-scroll"><table class="commercial-table"><thead><tr><th>Actividad o entregable</th><th>Responsable principal</th><th>Aporta el cliente</th><th>Aporta Metamag</th><th>Fecha o dependencia</th><th>Criterio de aceptación</th><th>Estado</th></tr></thead><tbody>
+                        @for (responsibility of service?.responsibilities ?? []; track responsibility.activity) {
+                          <tr><td>{{ responsibility.activity }}</td><td>{{ responsibility.lead === 'client' ? 'Cliente' : responsibility.lead === 'metamag' ? 'Metamag' : 'Compartido' }}</td><td>{{ responsibility.clientContribution }}</td><td>{{ responsibility.metamagContribution }}</td><td>{{ responsibility.dependency }}</td><td>{{ responsibility.acceptanceCriteria }}</td><td>{{ responsibility.state === 'included' ? 'Incluido' : responsibility.state === 'optional' ? 'Opcional' : responsibility.state === 'excluded' ? 'Excluido' : 'Pendiente de definir' }}</td></tr>
+                        }
+                      </tbody></table></div>
+                      <div class="responsibility-columns">
+                        <div><h5>Responsabilidades del cliente</h5><ul>@for (item of service?.clientResponsibilities ?? []; track item) { <li>{{ item }}</li> }</ul></div>
+                        <div><h5>Responsabilidades de Metamag</h5><ul>@for (item of service?.metamagResponsibilities ?? []; track item) { <li>{{ item }}</li> }</ul></div>
+                      </div>
+                      <label class="field-label">Dependencias confirmadas y estado de insumos<textarea rows="2" [value]="line.dependencyNote" (input)="updateCommercialLine(line.id, { dependencyNote: $any($event.target).value })" placeholder="Confirma quién entrega cada insumo, accesos/permisos, fecha y estado; registra explícitamente lo pendiente."></textarea></label>
+
+                      <h4>Estimación bottom-up por actividad · horas de trabajo, no días calendario</h4>
+                      <div class="table-scroll"><table class="commercial-table"><thead><tr><th>Actividad</th><th>Perfil responsable</th><th>Optimista (h)</th><th>Base (h)</th><th>Conservador (h)</th><th>Incertidumbre y supuestos</th></tr></thead><tbody>
+                        @for (activity of line.activitiesEstimate; track activity.id) {
+                          <tr><td>{{ activity.name }}</td><td>{{ commercialProfileName(activity.profileId) }}</td>
+                            @for (scenario of estimateScenarios; track scenario) {
+                              <td><input aria-label="Horas {{ scenarioLabel(scenario) }} para {{ activity.name }}" type="number" min="0" step="0.5" [value]="activity.hours[scenario === 'optimistic' ? 'min' : scenario === 'base' ? 'expected' : 'max']" (input)="updateCommercialActivity(line.id, activity.id, scenario === 'optimistic' ? 'min' : scenario === 'base' ? 'expected' : 'max', $any($event.target).value)"></td>
+                            }
+                            <td>{{ activity.uncertainty === 'low' ? 'Baja' : activity.uncertainty === 'medium' ? 'Media' : 'Alta' }} · {{ activity.assumptions.join(' · ') }}</td>
+                          </tr>
+                        }
+                      </tbody></table></div>
+                      <details class="synergy-editor"><summary>Actividad compartida con otro servicio (sinergia justificable)</summary><p>Usa la misma clave en ambas actividades únicamente cuando se trate del mismo trabajo; perfil, cantidad y tres escenarios de horas deben coincidir. Las horas duplicadas solo se descuentan si agregas justificación.</p>
+                        @for (activity of line.activitiesEstimate; track activity.id) {
+                          <div class="commercial-line-grid"><strong>{{ activity.name }}</strong>
+                            <label class="field-label">Clave compartida<input [value]="activity.sharedActivityKey ?? ''" (input)="updateCommercialActivitySharing(line.id, activity.id, 'sharedActivityKey', $any($event.target).value)" placeholder="Ej. configuracion-crm"></label>
+                            <label class="field-label">Justificación (mínimo 12 caracteres)<input [value]="activity.sharedActivityJustification ?? ''" (input)="updateCommercialActivitySharing(line.id, activity.id, 'sharedActivityJustification', $any($event.target).value)"></label>
+                          </div>
+                        }
+                      </details>
+                      <div class="commercial-line-grid calendar-duration-fields">
+                        <label class="field-label">Días calendario mínimos<input type="number" min="0" step="1" [value]="line.calendarDuration.minDays ?? ''" (input)="updateCommercialCalendarDuration(line.id, 'minDays', $any($event.target).value)"></label>
+                        <label class="field-label">Días calendario esperados<input type="number" min="0" step="1" [value]="line.calendarDuration.expectedDays ?? ''" (input)="updateCommercialCalendarDuration(line.id, 'expectedDays', $any($event.target).value)"></label>
+                        <label class="field-label">Días calendario máximos<input type="number" min="0" step="1" [value]="line.calendarDuration.maxDays ?? ''" (input)="updateCommercialCalendarDuration(line.id, 'maxDays', $any($event.target).value)"></label>
+                      </div>
+                      <p class="calendar-note">Días calendario: deben estimarse por separado y dependen de agenda, insumos, revisiones y dependencias; no equivalen a horas de trabajo. Revisiones incluidas en catálogo: {{ service?.revisionsIncluded }}.</p>
+
+                      <h4>Costos directos y terceros · configuración interna</h4>
+                      <div class="commercial-line-grid">
+                        <label class="field-label">Costo de terceros atribuible · COP<input type="number" min="0" step="1000" [value]="line.thirdPartyCostCOP ?? ''" (input)="updateCommercialCost(line.id, 'thirdPartyCostCOP', $any($event.target).value)" placeholder="Ingresa 0 si no aplica"></label>
+                        <label class="field-label">Otros costos directos · COP<input type="number" min="0" step="1000" [value]="line.otherDirectCostCOP ?? ''" (input)="updateCommercialCost(line.id, 'otherDirectCostCOP', $any($event.target).value)" placeholder="Ingresa 0 si no aplica"></label>
+                        <label class="field-label">Cargo externo trasladado al cliente · no descontable<input type="number" min="0" step="1000" [value]="line.thirdPartyChargeCOP ?? ''" (input)="updateCommercialCost(line.id, 'thirdPartyChargeCOP', $any($event.target).value)" placeholder="Ingresa 0 si no aplica"></label>
+                      </div>
+                      <h4>Métricas y limitaciones</h4>
+                      <div class="metrics-grid">
+                        @for (metric of service?.metrics ?? []; track metric.id) {
+                          <article><strong>{{ metric.name }} · {{ metric.kind === 'execution' ? 'Ejecución' : metric.kind === 'quality' ? 'Calidad' : 'Comercial' }}</strong><p><b>Fórmula:</b> {{ metric.formula }}</p><p><b>Fuente:</b> {{ metric.source }} · Línea base: {{ metric.baseline === 'available' ? 'disponible' : 'pendiente' }} · Frecuencia: {{ metric.frequency }}</p><p><b>Responsable/control:</b> {{ metric.owner }} · {{ metric.control === 'metamag' ? 'Metamag' : metric.control === 'shared' ? 'Compartido' : 'Externo' }} · {{ metric.limitation }}</p></article>
+                        }
+                      </div>
+                    </article>
+                  } @empty {
+                    <div class="empty-state"><h3>Alternativa sin servicios</h3><p>No se añaden servicios automáticamente. Selecciona solo los que tengan una brecha y evidencia que los justifique.</p></div>
+                  }
+
+                  <section class="commercial-price-panel">
+                    <div class="section-heading"><div><div class="eyebrow">SIMULADOR TRANSPARENTE · {{ option.name.toLocaleUpperCase() }}</div><h2>Esfuerzo, inversión y revisión</h2></div></div>
+                    <label class="field-label">Tarifa preferencial
+                      <select [value]="option.discountPercent" (change)="updateDiscountPercent($any($event.target).value)"><option [value]="0">Sin descuento</option><option [value]="10">10 %</option><option [value]="15">15 % · inicial, sujeto a aprobación</option><option [value]="20">20 %</option></select>
+                    </label>
+                    <div class="scenario-grid">
+                      @for (scenario of estimateScenarios; track scenario) {
+                        <article><span>{{ scenarioLabel(scenario) }}</span><strong>{{ quote.hours[scenario].total }} h</strong><small>Horas de trabajo presupuestadas</small><strong>{{ formatCOP(quote.laborCostCOP[scenario]) }}</strong><small>Costo laboral · perfiles internos configurados</small><strong>{{ formatCOP(quote.totalCostCOP[scenario]) }}</strong><small>Costo total estimado</small><strong>{{ formatCOP(quote.targetPriceCOP[scenario]) }}</strong><small>Precio objetivo con margen configurado</small></article>
+                      }
+                    </div>
+                    <h3>Escenario base · esfuerzo y costo por perfil (interno)</h3>
+                    <div class="table-scroll"><table class="commercial-table"><thead><tr><th>Perfil</th><th>Horas base</th><th>Costo laboral asignado</th></tr></thead><tbody>
+                      @for (profile of proposal.settings.profiles; track profile.id) {
+                        <tr><td>{{ profile.name }}</td><td>{{ quote.hours.base.byProfile[profile.id] ?? 0 }}</td><td>{{ formatCOP(commercialProfileCost(profile.id, quote.hours.base)) }}</td></tr>
+                      }
+                    </tbody></table></div>
+                    <div class="commercial-totals">
+                      <div class="total-row"><span>Inversión inicial · servicios únicos</span><strong>{{ formatCOP(quote.oneTimeClientInvestmentCOP) }}</strong></div>
+                      <div><span>Servicios únicos antes de descuento</span><strong>{{ formatCOP(quote.oneTimeServiceSubtotalCOP) }}</strong></div>
+                      <div><span>Tarifa preferencial · conceptos únicos elegibles</span><strong>− {{ formatCOP(quote.oneTimeDiscountCOP) }}</strong></div>
+                      <div><span>Gastos externos únicos · no descontables</span><strong>{{ formatCOP(quote.oneTimeThirdPartyChargeCOP) }}</strong></div>
+                      <div><span>Impuesto configurado · servicios únicos</span><strong>{{ formatCOP(quote.oneTimeTaxCOP) }}</strong></div>
+                      @if (quote.recurringServiceSubtotalCOP !== null && quote.recurringServiceSubtotalCOP > 0) {
+                        <div class="total-row"><span>Inversión recurrente mensual · servicios seleccionados</span><strong>{{ formatCOP(quote.recurringMonthlyInvestmentCOP) }}</strong></div>
+                        <div><span>Servicios recurrentes antes de descuento</span><strong>{{ formatCOP(quote.recurringServiceSubtotalCOP) }}</strong></div>
+                        <div><span>Tarifa preferencial · conceptos recurrentes elegibles</span><strong>− {{ formatCOP(quote.recurringDiscountCOP) }}</strong></div>
+                        <div><span>Gastos externos recurrentes · no descontables</span><strong>{{ formatCOP(quote.recurringThirdPartyChargeCOP) }}</strong></div>
+                        <div><span>Impuesto configurado · servicios recurrentes</span><strong>{{ formatCOP(quote.recurringTaxCOP) }}</strong></div>
+                      }
+                      <div><span>Precio comercial / hora base</span><strong>{{ formatCOP(quote.revenuePerExpectedHourCOP) }}</strong></div>
+                      <div><span>Margen estimado después de descuento · privado</span><strong>{{ quote.estimatedMarginPercent === null ? 'Indeterminado' : quote.estimatedMarginPercent.toFixed(1) + ' %' }}</strong></div>
+                    </div>
+                    <div class="private-calculation-note">Los perfiles, costos, márgenes y riesgos de desviación son información interna. No aparecen en la propuesta para el cliente.</div>
+                    @if (quote.blockers.length) { <div class="validation-panel" role="alert"><h3>Estimación incompleta · requiere configuración</h3><ul>@for (item of quote.blockers; track item) { <li>{{ item }}</li> }</ul></div> }
+                    @if (quote.warnings.length) { <div class="warning-panel"><h3>Alertas para revisión del asesor</h3><ul>@for (item of quote.warnings; track item) { <li>{{ item }}</li> }</ul></div> }
+                    @if (!quote.blockers.length && !quote.warnings.length) { <p class="ready-note">Configuración y alcance completos para revisión interna. La aprobación sigue siendo manual.</p> }
+                    <div class="commercial-settings-grid">
+                      <label class="field-label">Condiciones de pago<textarea rows="2" [value]="option.paymentTerms" (input)="updateAlternative({ paymentTerms: $any($event.target).value })" placeholder="Anticipo, hitos y vencimientos acordados"></textarea></label>
+                      <label class="field-label">Cronograma, fechas y dependencias<textarea rows="2" [value]="option.scheduleNote" (input)="updateAlternative({ scheduleNote: $any($event.target).value })" placeholder="Días calendario, hitos, aprobaciones e insumos requeridos"></textarea></label>
+                      <label class="field-label">Nota de gastos externos<textarea rows="2" [value]="option.externalCostNote" (input)="updateAlternative({ externalCostNote: $any($event.target).value })" placeholder="Pauta, licencias, hosting, dominio, terceros y forma de cobro"></textarea></label>
+                    </div>
+                    <label class="check-line"><input type="checkbox" [checked]="proposal.discountApproval.approved" (change)="setDiscountApproval($any($event.target).checked)"> Apruebo explícitamente la excepción de descuento/margen indicada</label>
+                    <label class="field-label">Justificación de excepción comercial<textarea rows="2" [value]="proposal.discountApproval.justification" (input)="updateProposal({ discountApproval: { ...proposal.discountApproval, justification: $any($event.target).value } })"></textarea></label>
+                    <label class="field-label">Revisión interna del asesor<textarea rows="2" [value]="proposal.internalApproval.note" (input)="setInternalApprovalNote($any($event.target).value)" placeholder="Documenta alertas revisadas, alcance, impuestos y decisiones antes de aprobar"></textarea></label>
+                    <div class="button-row workflow-actions">
+                      <button class="button button-secondary" type="button" (click)="requestProposalReview()" [disabled]="quote.blockers.length > 0">Enviar a revisión</button>
+                      <button class="button button-primary" type="button" (click)="approveProposalInternally()" [disabled]="quote.blockers.length > 0">Aprobar internamente</button>
+                      <button class="button button-secondary" type="button" (click)="shareProposal()" [disabled]="proposal.status !== 'internally_approved'">Marcar compartida con cliente</button>
+                      <button class="button button-secondary" type="button" (click)="printReport()" [disabled]="proposal.status !== 'internally_approved' && proposal.status !== 'shared_with_client' && proposal.status !== 'accepted' && proposal.status !== 'rejected'">Vista previa / Guardar propuesta como PDF</button>
+                    </div>
+                    @if (proposal.status === 'shared_with_client') { <div class="button-row"><button class="button button-secondary" type="button" (click)="markClientDecision('accepted')">Registrar aceptación del cliente</button><button class="button button-secondary" type="button" (click)="markClientDecision('rejected')">Registrar rechazo del cliente</button></div> }
+                    <p class="muted">Vigencia: <input type="date" [value]="proposal.validUntil" (input)="updateProposal({ validUntil: $any($event.target).value })"> · Revisiones guardadas: {{ proposal.revisions.length }}. La aprobación interna no equivale a aceptación del cliente.</p>
+                  </section>
+                </section>
+              </main>
+              }
+
+              @if (proposal.status === 'internally_approved' || proposal.status === 'shared_with_client' || proposal.status === 'accepted' || proposal.status === 'rejected') {
+              @if (clientProposalDocument(); as report) {
+              <article class="commercial-proposal-document report-page" aria-label="Documento comercial para el cliente">
+                <header class="report-cover"><div class="report-brand"><span class="brand-mark">M</span><span>METAMAG <strong>AGENCY</strong></span></div><div class="eyebrow">PROPUESTA COMERCIAL · {{ report.alternativeName.toLocaleUpperCase() }}</div><h1>{{ report.project }}</h1><div class="cover-rule"></div><p class="cover-client">{{ report.clientName }}</p><p>{{ report.organization || 'Organización por confirmar' }} · Asesor: {{ report.advisor || 'Por asignar' }}</p><p>Emitida {{ report.issueDate | date:'d MMMM y' }} · Válida hasta {{ report.validUntil | date:'d MMMM y' }}</p><div class="cover-foot">METAMAG AGENCY S.A.S. BIC · Documento sujeto a los términos de esta propuesta</div></header>
+                <section class="report-section"><div class="eyebrow">01 · CONTEXTO Y OBJETIVOS</div><h2>Propósito de la propuesta</h2><p>{{ report.objective || 'El objetivo se confirmará antes de iniciar.' }}</p><p>{{ report.alternativePositioning }}</p><p>Estado conocido: {{ report.knownState || 'Pendiente de validación' }}</p></section>
+                <section class="report-section"><div class="eyebrow">02 · ALCANCE Y ENTREGABLES</div><h2>Servicios incluidos</h2>
+                  @for (service of report.services; track service.name) {
+                    <article class="proposal-service"><h3>{{ service.name }} · Cantidad {{ service.quantity }}</h3><p><strong>Objetivo:</strong> {{ service.objective }}</p><p><strong>Alcance:</strong> {{ service.scope }}</p><ul>@for (deliverable of service.deliverables; track deliverable.id) { <li><strong>{{ deliverable.quantity }} × {{ deliverable.name }}</strong> · {{ deliverable.format }}<br><span>Criterio de aceptación: {{ deliverable.acceptanceCriteria }}</span></li> }</ul><p><strong>Exclusiones:</strong> {{ service.exclusions.join('; ') || 'No se declaran exclusiones adicionales.' }}</p><p><strong>Esfuerzo de planificación:</strong> {{ service.hours.optimistic }} h optimistas · {{ service.hours.base }} h base · {{ service.hours.conservative }} h conservadoras. Las sinergias justificadas se cuentan en el primer servicio que incluye la actividad compartida; horas de trabajo, estimación no garantizada. Duración calendario: {{ service.calendarDuration.minDays }}–{{ service.calendarDuration.maxDays }} días, {{ service.calendarDuration.expectedDays }} esperados, sujeta a dependencias.</p>
+                      <h4>Responsabilidades por parte</h4>
+                      <div class="table-scroll"><table class="commercial-table"><thead><tr><th>Actividad / entregable</th><th>Responsable</th><th>Aporte del cliente</th><th>Aporte de Metamag</th><th>Dependencia</th><th>Aceptación</th><th>Estado</th></tr></thead><tbody>@for (responsibility of service.responsibilities; track responsibility.activity) { <tr><td>{{ responsibility.activity }}</td><td>{{ responsibility.lead === 'client' ? 'Cliente' : responsibility.lead === 'metamag' ? 'Metamag' : 'Compartido' }}</td><td>{{ responsibility.clientContribution }}</td><td>{{ responsibility.metamagContribution }}</td><td>{{ responsibility.dependency }}</td><td>{{ responsibility.acceptanceCriteria }}</td><td>{{ responsibility.state === 'included' ? 'Incluido' : responsibility.state === 'optional' ? 'Opcional' : responsibility.state === 'excluded' ? 'Excluido' : 'Pendiente de definir' }}</td></tr> }</tbody></table></div>
+                      <div class="responsibility-columns"><div><strong>Insumos y responsabilidades del cliente</strong><ul>@for (item of service.clientResponsibilities; track item) { <li>{{ item }}</li> }</ul></div><div><strong>Compromisos de Metamag</strong><ul>@for (item of service.metamagResponsibilities; track item) { <li>{{ item }}</li> }</ul></div></div>
+                      <div class="proposal-metrics"><h4>Métricas y criterios</h4>@for (metric of service.metrics; track metric.id) { <p><strong>{{ metric.name }} · {{ metric.kind === 'execution' ? 'Ejecución' : metric.kind === 'quality' ? 'Calidad' : 'Resultado comercial' }}:</strong> {{ metric.formula }} · Fuente: {{ metric.source }} · Frecuencia: {{ metric.frequency }} · Responsable: {{ metric.owner }}. {{ metric.limitation }}</p> }</div>
+                    </article>
+                  } @empty { <p>No se han seleccionado servicios; esta propuesta no es compartible.</p> }
+                </section>
+                <section class="report-section"><div class="eyebrow">03 · CRONOGRAMA E INSUMOS</div><h2>Condiciones para la ejecución</h2><p><strong>Cronograma propuesto:</strong> {{ report.scheduleNote || 'Pendiente de definir con el cliente.' }}</p><p><strong>Insumos y dependencias:</strong> {{ report.dependencies.join(' · ') || 'Pendientes de confirmación.' }}</p><p><strong>Condiciones de pago:</strong> {{ report.paymentTerms || 'Pendientes de acordar.' }}</p><p><strong>Gastos externos:</strong> {{ report.externalCostNote || 'Los terceros, pauta, licencias, dominio y hosting se detallarán y cotizarán aparte cuando apliquen.' }}</p></section>
+                <section class="report-section"><div class="eyebrow">04 · INVERSIÓN</div><h2>Tarifa preferencial</h2><table class="report-table"><thead><tr><th>Concepto</th><th>Cantidad</th><th>Tarifa por unidad</th><th>Subtotal</th></tr></thead><tbody>@for (service of report.services; track service.name) { <tr><td>{{ service.name }}{{ service.recurring ? ' · recurrente mensual' : '' }}</td><td>{{ service.quantity }}</td><td>{{ formatCOP(service.unitPriceCOP) }}{{ service.recurring ? ' / mes' : '' }}</td><td>{{ formatCOP(service.subtotalCOP) }}{{ service.recurring ? ' / mes' : '' }}</td></tr> }</tbody></table><div class="public-price-summary"><h3>Inversión inicial · servicios únicos: {{ formatCOP(report.oneTime.investmentCOP) }}</h3><p>Servicios únicos: {{ formatCOP(report.oneTime.servicesCOP) }} · tarifa preferencial {{ report.oneTime.discountPercent }} %: −{{ formatCOP(report.oneTime.discountCOP) }}</p><p>Gastos externos únicos no descontables: {{ formatCOP(report.oneTime.externalCostsCOP) }} · impuestos configurados: {{ formatCOP(report.oneTime.taxesCOP) }}</p>@if (report.recurringMonthly.servicesCOP !== null && report.recurringMonthly.servicesCOP > 0) { <h3>Inversión recurrente mensual: {{ formatCOP(report.recurringMonthly.investmentCOP) }}</h3><p>Servicios recurrentes: {{ formatCOP(report.recurringMonthly.servicesCOP) }} · tarifa preferencial {{ report.recurringMonthly.discountPercent }} %: −{{ formatCOP(report.recurringMonthly.discountCOP) }}</p><p>Gastos externos mensuales: {{ formatCOP(report.recurringMonthly.externalCostsCOP) }} · impuestos configurados: {{ formatCOP(report.recurringMonthly.taxesCOP) }}</p> }<p>{{ report.taxNote || 'Impuestos y gastos externos deben confirmarse según los conceptos aplicables antes de aceptar.' }}</p><p>Los importes son los propuestos en esta versión y están sujetos a los términos, alcance y vigencia indicados.</p></div></section>
+                <section class="report-section"><div class="eyebrow">05 · PRÓXIMOS PASOS</div><h2>Revisión y aceptación</h2><p>Confirmar alcance, responsables, insumos, fechas, condiciones de pago, impuestos y costos externos antes de iniciar. El estado interno de esta propuesta no implica aceptación del cliente.</p><p class="proposal-signoff">Por Metamag: ______________________________ · Por el cliente: ______________________________</p></section>
+              </article>
+              } @else {
+                <section class="proposal-pending screen-only"><h2>Documento para cliente no disponible</h2><p>Completa la configuración antes de generar la versión imprimible.</p></section>
+              }
+              } @else {
+                <section class="proposal-pending screen-only"><h2>Documento para cliente bloqueado</h2><p>La vista imprimible se habilita únicamente después de la aprobación interna. Resuelve la estimación y registra la revisión del asesor.</p></section>
+              }
+            }
+          }
+        } @else {
+          <main class="proposal-page screen-only"><div class="empty-state"><h2>La propuesta comercial aún no existe</h2><p>Preparar una propuesta es opcional; el diagnóstico y su informe no dependen de este módulo.</p><button class="button button-primary" type="button" (click)="startProposal()">Iniciar propuesta comercial</button></div></main>
+        }
+      }
+
+      @if ((view() === 'client-report' || view() === 'combined-report') && clientReport(); as report) {
         <main class="report-page client-report">
-          <div class="report-toolbar screen-only"><div><div class="eyebrow">VISTA PREVIA · COMPARTIBLE CON EL CLIENTE</div><h1>Informe de diagnóstico</h1><p>Las notas privadas del asesor y las preguntas internas no se incluyen en este informe.</p></div><button class="button button-primary" type="button" (click)="printReport()">Vista previa / Guardar como PDF</button></div>
+          <div class="report-toolbar screen-only"><div><div class="eyebrow">VISTA PREVIA · COMPARTIBLE CON EL CLIENTE</div><h1>{{ view() === 'combined-report' ? 'Diagnóstico + propuesta comercial' : 'Informe de diagnóstico' }}</h1><p>Las notas privadas del asesor y las preguntas internas no se incluyen en este informe.</p></div><div class="button-row"><button class="button button-primary" type="button" (click)="printReport()">Vista previa / Guardar diagnóstico como PDF</button>@if (proposalApprovedForSharing()) { <button class="button button-secondary" type="button" (click)="printCombinedReports()">Vista previa / Guardar diagnóstico + propuesta como PDF</button> }</div></div>
           <article class="client-document">
             <header class="report-cover"><div class="report-brand"><span class="brand-mark">M</span><span>METAMAG <strong>AGENCY</strong></span></div>@if (report.isExample) { <div class="example-banner">EJEMPLO · TODOS LOS DATOS SON FICTICIOS</div> }<div class="eyebrow">DIAGNÓSTICO CONSULTIVO</div><h1>{{ form.reportConfiguration.clientPdf.title }}</h1><div class="cover-rule"></div><p class="cover-client">{{ report.clientName }}</p><p>{{ report.project }}{{ report.organization ? ' · ' + report.organization : '' }}</p><p>{{ report.meetingDate | date:'d MMMM y' }}</p><div class="cover-foot">METAMAG AGENCY S.A.S. BIC · Generado {{ report.generatedAt | date:'d MMMM y, h:mm a' }} · Metodología {{ report.methodologyVersion }}</div></header>
             <section class="report-section"><div class="eyebrow">01 · RESUMEN EJECUTIVO</div><h2>Una lectura para decidir próximos pasos</h2><p>{{ report.objective || 'El objetivo de esta conversación se encuentra pendiente de validación.' }}</p>@if (report.summaryApproved) { <div class="approved-summary"><span class="approved-stamp">RESUMEN REVISADO POR EL ASESOR</span>@for (item of [{ label: 'Hechos confirmados', value: report.executiveSummary.confirmedFacts }, { label: 'Declarado, no verificado', value: report.executiveSummary.declaredFacts }, { label: 'Inferencias del asesor', value: report.executiveSummary.inferences }, { label: 'Fortalezas identificadas', value: report.executiveSummary.strengths }, { label: 'Dificultades identificadas', value: report.executiveSummary.difficulties }, { label: 'Información pendiente', value: report.executiveSummary.pendingInformation }, { label: 'Riesgos y dependencias', value: report.executiveSummary.risksAndDependencies }, { label: 'Prioridades propuestas', value: report.executiveSummary.priorities }, { label: 'Decisiones confirmadas por el asesor', value: report.executiveSummary.advisorDecisions }, { label: 'Próximas acciones', value: report.executiveSummary.nextActions }, { label: 'Responsabilidades de la autora', value: report.executiveSummary.authorResponsibilities }, { label: 'Responsabilidades potenciales de Metamag', value: report.executiveSummary.metamagResponsibilities }, { label: 'Fechas y compromisos', value: report.executiveSummary.dates }]; track item.label) { @if (item.value.trim()) { <div><strong>{{ item.label }}</strong><p>{{ item.value }}</p></div> } }</div> } @else { <p class="report-pending-notice">El resumen ejecutivo aún no ha sido revisado para compartir. Esta vista no incluye su borrador.</p> }</section>

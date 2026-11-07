@@ -1,7 +1,7 @@
 import { DatePipe } from '@angular/common';
 import { Component, computed, effect, inject, signal } from '@angular/core';
 import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
-import { ActivatedRoute, RouterLink } from '@angular/router';
+import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import {
   DiscoverySession,
@@ -46,8 +46,25 @@ import {
 import { createClientReport } from '../core/report';
 import { recommendServices, SERVICE_CATALOG, serviceById } from '../core/services.catalog';
 import { SessionStore } from '../core/session-store';
+import {
+  COMMERCIAL_CATALOG_VERSION,
+  CommercialAlternative,
+  CommercialProposal,
+  CommercialService,
+  CommercialServiceLine,
+  CommercialRoleId,
+  ProposalOptionId,
+  ProposalRevision,
+  ProposalStatus,
+  createCommercialProposal,
+  createProposalRevision,
+  proposalStatusLabel,
+} from '../core/commercial-model';
+import { COMMERCIAL_SERVICES, getCommercialService } from '../core/commercial-catalog';
+import { calculateAlternative, EstimateScenario, HourSummary } from '../core/commercial-calculator';
+import { createClientProposalDocument } from '../core/commercial-report';
 
-type SessionView = 'interview' | 'summary' | 'diagnosis' | 'client-report' | 'internal-report';
+type SessionView = 'interview' | 'summary' | 'diagnosis' | 'client-report' | 'internal-report' | 'proposal' | 'combined-report';
 
 @Component({
   standalone: true,
@@ -58,12 +75,40 @@ export class SessionComponent {
   readonly store = inject(SessionStore);
   readonly forms = inject(FormDefinitionService);
   private readonly route = inject(ActivatedRoute);
+  private readonly router = inject(Router);
   private readonly fb = inject(FormBuilder).nonNullable;
   readonly sessionId = this.route.snapshot.paramMap.get('id') ?? '';
   readonly view = signal<SessionView>('interview');
   readonly selectedGrowthLevel = signal<GrowthLevelId>('exploracion');
   readonly formDefinition = computed(() => this.session()?.formSnapshot ?? this.forms.form());
   readonly session = computed(() => this.store.sessions().find((item) => item.id === this.sessionId) ?? null);
+  readonly commercialCatalog = COMMERCIAL_SERVICES;
+  readonly commercialCatalogVersion = COMMERCIAL_CATALOG_VERSION;
+  readonly estimateScenarios = ['optimistic', 'base', 'conservative'] as const;
+  readonly commercialProposal = computed(() => this.session()?.commercialProposal ?? null);
+  readonly proposalApprovedForSharing = computed(() => {
+    const proposal = this.commercialProposal();
+    return !!proposal?.internalApproval.approved &&
+      ['internally_approved', 'shared_with_client', 'accepted', 'rejected'].includes(proposal.status);
+  });
+  readonly activeAlternative = computed(() => {
+    const proposal = this.commercialProposal();
+    return proposal?.alternatives.find((item) => item.id === proposal.selectedAlternativeId) ?? null;
+  });
+  readonly commercialCalculation = computed(() => {
+    const proposal = this.commercialProposal();
+    const alternative = this.activeAlternative();
+    return proposal && alternative ? calculateAlternative(proposal, alternative) : null;
+  });
+  readonly clientProposalDocument = computed(() => {
+    const session = this.session();
+    const proposal = this.commercialProposal();
+    const alternative = this.activeAlternative();
+    const calculation = this.commercialCalculation();
+    return session && proposal && alternative && calculation
+      ? createClientProposalDocument(session, proposal, alternative, calculation)
+      : null;
+  });
   readonly interviewQuestions = computed(() => {
     const form = this.formDefinition();
     const session = this.session();
@@ -142,7 +187,7 @@ export class SessionComponent {
   constructor() {
     this.route.paramMap.pipe(takeUntilDestroyed()).subscribe((params) => {
       const requested = params.get('view');
-      this.view.set(requested === 'summary' || requested === 'diagnosis' || requested === 'client-report' || requested === 'internal-report'
+      this.view.set(requested === 'summary' || requested === 'diagnosis' || requested === 'client-report' || requested === 'internal-report' || requested === 'proposal' || requested === 'combined-report'
         ? requested
         : 'interview');
     });
@@ -527,6 +572,405 @@ export class SessionComponent {
 
   printReport(): void {
     globalThis.print();
+  }
+
+  async printCombinedReports(): Promise<void> {
+    const session = this.session();
+    if (!session || !this.proposalApprovedForSharing()) {
+      this.notice = 'El PDF combinado requiere una propuesta aprobada internamente.';
+      return;
+    }
+    await this.router.navigate(['/session', session.id, 'combined-report']);
+    globalThis.setTimeout(() => globalThis.print(), 100);
+  }
+
+  async startProposal(): Promise<void> {
+    const session = this.session();
+    if (!session) return;
+    const updated = session.commercialProposal
+      ? session
+      : { ...session, commercialProposal: createCommercialProposal() };
+    try {
+      await this.store.save(updated);
+      await this.router.navigate(['/session', session.id, 'proposal']);
+    } catch (error) {
+      this.notice = error instanceof Error ? `No se pudo preparar la propuesta: ${error.message}` : 'No se pudo preparar la propuesta.';
+    }
+  }
+
+  updateProposal(patch: Partial<CommercialProposal>): void {
+    const session = this.session();
+    if (!session) return;
+    const current = session.commercialProposal ?? createCommercialProposal();
+    const workflowTransition = patch.status !== undefined;
+    this.persist({
+      ...session,
+      commercialProposal: {
+        ...current,
+        ...patch,
+        updatedAt: new Date().toISOString(),
+        status: workflowTransition ? patch.status! : 'estimation_incomplete',
+        internalApproval: workflowTransition
+          ? patch.internalApproval ?? current.internalApproval
+          : { ...current.internalApproval, approved: false, approvedAt: '' },
+      },
+    });
+  }
+
+  updateAlternative(patch: Partial<CommercialAlternative>): void {
+    const proposal = this.commercialProposal();
+    const active = this.activeAlternative();
+    if (!proposal || !active) return;
+    this.updateProposal({
+      alternatives: proposal.alternatives.map((item) => item.id === active.id ? { ...item, ...patch } : item),
+    });
+  }
+
+  selectAlternative(id: ProposalOptionId): void {
+    const proposal = this.commercialProposal();
+    if (proposal) this.updateProposal({ selectedAlternativeId: id });
+  }
+
+  addCommercialService(serviceId: string): void {
+    const service = COMMERCIAL_SERVICES.find((item) => item.id === serviceId);
+    const active = this.activeAlternative();
+    if (!service || !active || active.lines.some((line) => line.serviceId === service.id)) return;
+    const line: CommercialServiceLine = {
+      id: crypto.randomUUID(),
+      serviceId: service.id,
+      serviceSnapshot: structuredClone(service),
+      quantity: service.defaultQuantity,
+      priceReviewed: false,
+      objective: service.objective,
+      scopeNotes: service.activities.join('\n'),
+      calendarDuration: { ...service.calendarDuration },
+      deliverables: structuredClone(service.deliverables),
+      exclusions: [...service.exclusions],
+      activitiesEstimate: structuredClone(service.activitiesEstimate),
+      thirdPartyCostCOP: null,
+      otherDirectCostCOP: null,
+      thirdPartyChargeCOP: null,
+      proposedUnitPriceCOP: null,
+      discountEligible: service.discountEligible,
+      dependencyNote: '',
+    };
+    this.updateAlternative({ lines: [...active.lines, line] });
+  }
+
+  updateCommercialLine(lineId: string, patch: Partial<CommercialServiceLine>): void {
+    const active = this.activeAlternative();
+    if (!active) return;
+    this.updateAlternative({
+      lines: active.lines.map((line) => line.id === lineId ? { ...line, ...patch } : line),
+    });
+  }
+
+  updateCommercialPrice(lineId: string, value: string): void {
+    const price = this.optionalNumber(value);
+    if (price !== null && price < 0) return;
+    this.updateCommercialLine(lineId, { proposedUnitPriceCOP: price, priceReviewed: false });
+  }
+
+  updateCommercialLineDeliverable(
+    lineId: string,
+    deliverableId: string,
+    patch: Partial<CommercialServiceLine['deliverables'][number]>,
+  ): void {
+    const line = this.activeAlternative()?.lines.find((item) => item.id === lineId);
+    if (!line) return;
+    this.updateCommercialLine(lineId, {
+      deliverables: line.deliverables.map((item) => item.id === deliverableId ? { ...item, ...patch } : item),
+    });
+  }
+
+  updateCommercialCalendarDuration(
+    lineId: string,
+    field: 'minDays' | 'expectedDays' | 'maxDays',
+    value: string,
+  ): void {
+    const line = this.activeAlternative()?.lines.find((item) => item.id === lineId);
+    if (!line) return;
+    const days = this.optionalNumber(value);
+    if (days !== null && days < 0) return;
+    this.updateCommercialLine(lineId, {
+      calendarDuration: { ...line.calendarDuration, [field]: days },
+    });
+  }
+
+  updateCommercialActivity(
+    lineId: string,
+    activityId: string,
+    scenario: 'min' | 'expected' | 'max',
+    value: string,
+  ): void {
+    const line = this.activeAlternative()?.lines.find((item) => item.id === lineId);
+    if (!line) return;
+    const hours = value === '' ? null : Number(value);
+    if (hours !== null && (!Number.isFinite(hours) || hours < 0)) return;
+    this.updateCommercialLine(lineId, {
+      activitiesEstimate: line.activitiesEstimate.map((item) => item.id === activityId
+        ? { ...item, hours: { ...item.hours, [scenario]: hours } }
+        : item),
+    });
+  }
+
+  updateCommercialActivitySharing(
+    lineId: string,
+    activityId: string,
+    field: 'sharedActivityKey' | 'sharedActivityJustification',
+    value: string,
+  ): void {
+    const line = this.activeAlternative()?.lines.find((item) => item.id === lineId);
+    if (!line) return;
+    this.updateCommercialLine(lineId, {
+      activitiesEstimate: line.activitiesEstimate.map((item) => item.id === activityId
+        ? { ...item, [field]: value }
+        : item),
+    });
+  }
+
+  removeCommercialService(lineId: string): void {
+    const active = this.activeAlternative();
+    if (active) this.updateAlternative({ lines: active.lines.filter((line) => line.id !== lineId) });
+  }
+
+  updateProfileCost(profileId: string, value: string): void {
+    const proposal = this.commercialProposal();
+    if (!proposal) return;
+    const cost = this.optionalNumber(value);
+    if (cost !== null && cost < 0) return;
+    this.updateProposal({
+      settings: {
+        ...proposal.settings,
+        profiles: proposal.settings.profiles.map((profile) => profile.id === profileId
+          ? { ...profile, hourlyCostCOP: cost }
+          : profile),
+      },
+    });
+  }
+
+  updateCommercialSetting(
+    setting: 'indirectCostPercent' | 'contingencyPercent' | 'targetMarginPercent' | 'minimumAuthorizedMarginPercent' | 'taxPercent',
+    value: string,
+  ): void {
+    const proposal = this.commercialProposal();
+    if (!proposal) return;
+    const number = this.optionalNumber(value);
+    if (number !== null && (number < 0 || number > 99.99)) return;
+    this.updateProposal({ settings: { ...proposal.settings, [setting]: number } });
+  }
+
+  updateCommercialCost(
+    lineId: string,
+    field: 'thirdPartyCostCOP' | 'otherDirectCostCOP' | 'thirdPartyChargeCOP',
+    value: string,
+  ): void {
+    const number = this.optionalNumber(value);
+    if (number !== null && number < 0) return;
+    this.updateCommercialLine(lineId, { [field]: number });
+  }
+
+  formatCOP(value: number | null | undefined): string {
+    return value === null || value === undefined
+      ? 'Por configurar'
+      : new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP', maximumFractionDigits: 0 }).format(value);
+  }
+
+  proposalStatusText(status: ProposalStatus): string {
+    return proposalStatusLabel(status);
+  }
+
+  proposalRevisionAlternativeName(revision: ProposalRevision): string {
+    return revision.alternatives.find((item) => item.id === revision.selectedAlternativeId)?.name ?? revision.selectedAlternativeId;
+  }
+
+  commercialServiceName(serviceId: CommercialServiceLine['serviceId']): string {
+    return getCommercialService(serviceId)?.name ?? serviceId;
+  }
+
+  commercialServiceDefinition(serviceId: CommercialServiceLine['serviceId']): CommercialService | undefined {
+    return getCommercialService(serviceId);
+  }
+
+  updateDiscountPercent(value: string): void {
+    const discountPercent = Number(value);
+    if (discountPercent === 0 || discountPercent === 10 || discountPercent === 15 || discountPercent === 20) {
+      this.updateAlternative({ discountPercent });
+    }
+  }
+
+  commercialDependencies(alternative: CommercialAlternative): string {
+    return alternative.lines.map((line) => line.dependencyNote).filter(Boolean).join(' · ');
+  }
+
+  splitLines(value: string): string[] {
+    return value.split(/\r?\n/);
+  }
+
+  setDiscountApproval(approved: boolean): void {
+    const proposal = this.commercialProposal();
+    if (proposal) {
+      this.updateProposal({
+        discountApproval: { ...proposal.discountApproval, approved },
+      });
+    }
+  }
+
+  setInternalApprovalNote(note: string): void {
+    const proposal = this.commercialProposal();
+    if (proposal) {
+      this.updateProposal({
+        internalApproval: { ...proposal.internalApproval, note },
+      });
+    }
+  }
+
+  commercialProfileName(profileId: string): string {
+    return this.commercialProposal()?.settings.profiles.find((profile) => profile.id === profileId)?.name ?? profileId;
+  }
+
+  commercialProfileCost(profileId: CommercialRoleId, hours: HourSummary): number | null {
+    const profile = this.commercialProposal()?.settings.profiles.find((item) => item.id === profileId);
+    const profileHours = hours.byProfile[profileId];
+    return profile?.hourlyCostCOP === null || profile?.hourlyCostCOP === undefined || profileHours === undefined
+      ? null
+      : Math.round(profile.hourlyCostCOP * profileHours);
+  }
+
+  commercialLineHours(
+    alternative: CommercialAlternative,
+    line: CommercialServiceLine,
+    scenario: EstimateScenario,
+  ): number {
+    const seenShared = new Set<string>();
+    for (const previous of alternative.lines) {
+      if (previous.id === line.id) break;
+      previous.activitiesEstimate.forEach((activity) => {
+        const key = activity.sharedActivityKey?.trim();
+        if (key) seenShared.add(key);
+      });
+    }
+    let total = 0;
+    for (const activity of line.activitiesEstimate) {
+      const key = activity.sharedActivityKey?.trim();
+      if (key && seenShared.has(key)) continue;
+      if (key) seenShared.add(key);
+      const hours = scenario === 'optimistic'
+        ? activity.hours.min
+        : scenario === 'conservative' ? activity.hours.max : activity.hours.expected;
+      total += (hours ?? 0) * line.quantity;
+    }
+    return total;
+  }
+
+  scenarioLabel(scenario: 'optimistic' | 'base' | 'conservative'): string {
+    return scenario === 'optimistic' ? 'Optimista' : scenario === 'base' ? 'Base' : 'Conservador';
+  }
+
+  async saveProposalRevision(): Promise<void> {
+    const session = this.session();
+    const proposal = this.commercialProposal();
+    if (!session || !proposal) return;
+    const revision = createProposalRevision(proposal);
+    try {
+      await this.store.save({
+        ...session,
+        commercialProposal: {
+          ...proposal,
+          updatedAt: revision.savedAt,
+          revisions: [...proposal.revisions, revision],
+        },
+      });
+      this.notice = `Versión ${revision.id.slice(0, 8)} guardada.`;
+    } catch (error) {
+      this.notice = error instanceof Error ? `No se guardó la versión: ${error.message}` : 'No se guardó la versión.';
+    }
+  }
+
+  async restoreProposalRevision(revisionId: string): Promise<void> {
+    const session = this.session();
+    const proposal = this.commercialProposal();
+    const revision = proposal?.revisions.find((item) => item.id === revisionId);
+    if (!session || !proposal || !revision) return;
+    const currentRevision = createProposalRevision(proposal);
+    try {
+      await this.store.save({
+        ...session,
+        commercialProposal: {
+          ...proposal,
+          catalogVersion: revision.catalogVersion,
+          updatedAt: new Date().toISOString(),
+          status: 'estimation_incomplete',
+          selectedAlternativeId: revision.selectedAlternativeId,
+          validUntil: revision.validUntil,
+          settings: structuredClone(revision.settings),
+          alternatives: structuredClone(revision.alternatives),
+          advisorNote: revision.advisorNote,
+          taxNote: revision.taxNote,
+          discountApproval: structuredClone(revision.discountApproval),
+          internalApproval: { ...revision.internalApproval, approved: false, approvedAt: '' },
+          clientStatusNote: revision.clientStatusNote,
+          revisions: [...proposal.revisions, currentRevision],
+        },
+      });
+      this.notice = `Se restauró la versión ${revision.id.slice(0, 8)}. Requiere nueva revisión interna.`;
+    } catch (error) {
+      this.notice = error instanceof Error ? `No se restauró la versión: ${error.message}` : 'No se restauró la versión.';
+    }
+  }
+
+  requestProposalReview(): void {
+    const proposal = this.commercialProposal();
+    const calculation = this.commercialCalculation();
+    if (!proposal || !calculation) return;
+    if (calculation.blockers.length) {
+      this.notice = 'Completa los requisitos pendientes antes de enviar a revisión.';
+      return;
+    }
+    this.updateProposal({ status: 'pending_review' });
+  }
+
+  approveProposalInternally(): void {
+    const proposal = this.commercialProposal();
+    const calculation = this.commercialCalculation();
+    if (!proposal || !calculation) return;
+    if (calculation.blockers.length) {
+      this.notice = 'No se puede aprobar: resuelve los requisitos pendientes primero.';
+      return;
+    }
+    if (calculation.warnings.length && proposal.internalApproval.note.trim().length < 15) {
+      this.notice = 'Registra una revisión interna de al menos 15 caracteres para atender las alertas antes de aprobar.';
+      return;
+    }
+    this.updateProposal({
+      status: 'internally_approved',
+      internalApproval: {
+        approved: true,
+        note: proposal.internalApproval.note,
+        approvedAt: new Date().toISOString(),
+      },
+    });
+  }
+
+  shareProposal(): void {
+    const proposal = this.commercialProposal();
+    if (!proposal || proposal.status !== 'internally_approved' || !proposal.internalApproval.approved) {
+      this.notice = 'La propuesta debe tener aprobación interna antes de marcarse como compartida.';
+      return;
+    }
+    this.updateProposal({ status: 'shared_with_client' });
+  }
+
+  markClientDecision(status: 'accepted' | 'rejected'): void {
+    const proposal = this.commercialProposal();
+    if (!proposal || proposal.status !== 'shared_with_client') return;
+    this.updateProposal({ status });
+  }
+
+  private optionalNumber(value: string): number | null {
+    if (value.trim() === '') return null;
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : null;
   }
 
   saveInternalJson(): void {

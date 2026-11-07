@@ -1,4 +1,5 @@
 import type { GrowthEvaluation } from './growth-model';
+import type { CommercialProposal } from './commercial-model';
 
 export type QuestionStatus = 'pending' | 'answered' | 'unknown' | 'requires_verification' | 'not_applicable';
 export type InterviewMode = 'essential' | 'complete';
@@ -188,6 +189,7 @@ export interface DiscoverySession {
   growthEvaluation?: GrowthEvaluation;
   growthClassificationApproved?: boolean;
   growthReviewNote?: string;
+  commercialProposal?: CommercialProposal;
 }
 
 export interface AssessmentResult {

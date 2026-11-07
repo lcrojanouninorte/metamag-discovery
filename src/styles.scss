@@ -519,6 +519,82 @@ input::placeholder, textarea::placeholder { color: #9aa59f; }
   .report-table th, .report-table td { padding: 6px 4px; }
   .report-roadmap { grid-template-columns: 1fr; }
 }
+.commercial-entry { display: flex; align-items: center; justify-content: space-between; gap: 18px; margin-top: 20px; padding: 18px 20px; background: #edf3ef; border: 1px solid #d5e0d9; border-radius: 9px; }
+.commercial-entry strong { color: var(--forest); font-size: 14px; }
+.commercial-entry p { margin: 4px 0 0; color: var(--muted); font-size: 12px; }
+.proposal-page { max-width: 1180px; margin: 0 auto; padding: 34px 28px 72px; }
+.proposal-status { display: inline-flex; align-items: center; padding: 8px 12px; background: var(--amber-bg); border-radius: 99px; color: var(--amber); font-size: 12px; font-weight: 700; white-space: nowrap; }
+.proposal-status[data-status="internally_approved"], .proposal-status[data-status="accepted"] { color: #285d43; background: #e6f2e9; }
+.commercial-settings, .commercial-alternatives, .commercial-price-panel { margin: 24px 0; padding: 24px; background: white; border: 1px solid var(--line); border-radius: 10px; }
+.commercial-settings-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; margin-top: 18px; }
+.formula-note, .calendar-note, .private-calculation-note { margin: 16px 0 0; padding: 12px 14px; color: #53645b; background: #f1f5f2; border-radius: 6px; font-size: 12px; }
+.private-calculation-note { color: #744f17; background: #faf3e6; }
+.alternative-tabs { display: grid; grid-template-columns: repeat(3, 1fr); gap: 9px; margin: 18px 0; }
+.alternative-tabs button { display: grid; gap: 3px; padding: 13px; text-align: left; color: var(--ink); background: white; border: 1px solid var(--line); border-radius: 7px; }
+.alternative-tabs button.active { color: var(--forest); background: var(--mint); border-color: #9eb6a7; }
+.alternative-tabs button span { color: var(--muted); font-size: 11px; }
+.revision-history { margin: 8px 0 18px; padding: 12px; background: #f7f8f6; border-radius: 7px; font-size: 12px; }
+.revision-history summary { cursor: pointer; color: var(--forest); font-weight: 700; }
+.revision-row { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 9px 0; border-top: 1px solid var(--line); }
+.service-picker { display: grid; grid-template-columns: minmax(240px, .7fr) 1.3fr; align-items: end; gap: 16px; margin: 22px 0; padding: 16px; background: #f4f7f5; border-radius: 8px; }
+.service-picker p { margin: 0 0 8px; color: var(--muted); font-size: 12px; }
+.commercial-line { margin: 18px 0; padding: 20px; border: 1px solid #dce5df; border-radius: 9px; }
+.commercial-line-heading { display: flex; align-items: start; justify-content: space-between; gap: 16px; margin-bottom: 16px; }
+.commercial-line-heading h3 { margin: 3px 0; color: var(--forest); font-family: Georgia, serif; font-size: 22px; font-weight: 500; }
+.commercial-line-heading p { max-width: 680px; margin: 5px 0 0; color: var(--muted); font-size: 12px; }
+.commercial-line h4 { margin: 22px 0 10px; color: var(--forest); font-size: 14px; }
+.commercial-line h5 { margin: 8px 0; font-size: 12px; }
+.commercial-line-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin: 14px 0; }
+.commercial-line-grid .full-width { grid-column: 1 / -1; }
+.deliverable-edit { display: grid; grid-template-columns: 1.2fr .5fr 1fr 1.8fr; gap: 10px; margin: 10px 0; }
+.table-scroll { width: 100%; overflow-x: auto; margin: 10px 0; border: 1px solid var(--line); border-radius: 6px; }
+.commercial-table { width: 100%; border-collapse: collapse; font-size: 11px; }
+.commercial-table th, .commercial-table td { min-width: 105px; padding: 9px; border-bottom: 1px solid var(--line); vertical-align: top; text-align: left; }
+.commercial-table th { color: var(--forest); background: #eff4f1; font-weight: 700; }
+.commercial-table input { min-width: 80px; }
+.responsibility-columns { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin: 12px 0; padding: 12px 16px; background: #f7f8f6; border-radius: 7px; font-size: 12px; }
+.responsibility-columns ul { margin-bottom: 0; padding-left: 18px; }
+.metrics-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 9px; }
+.metrics-grid article { padding: 12px; background: #f6f8f6; border-radius: 6px; font-size: 11px; }
+.metrics-grid p { margin: 7px 0 0; }
+.scenario-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; margin: 18px 0; }
+.scenario-grid article { display: grid; gap: 6px; padding: 15px; background: #f3f6f4; border: 1px solid var(--line); border-radius: 7px; }
+.scenario-grid article > span { color: var(--forest); font-weight: 750; }
+.scenario-grid article strong { font-size: 15px; }
+.scenario-grid article small { margin-top: -6px; color: var(--muted); font-size: 10px; }
+.commercial-totals { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1px 18px; margin: 18px 0; background: var(--line); border: 1px solid var(--line); }
+.commercial-totals > div { display: flex; justify-content: space-between; gap: 12px; padding: 11px; background: white; font-size: 12px; }
+.commercial-totals .total-row { grid-column: 1 / -1; color: white; background: var(--forest); font-size: 14px; }
+.validation-panel, .warning-panel, .ready-note { margin: 14px 0; padding: 14px 16px; border-radius: 7px; font-size: 12px; }
+.validation-panel { color: #762f2a; background: var(--red-bg); }
+.warning-panel { color: #795116; background: var(--amber-bg); }
+.ready-note { color: #285d43; background: #e6f2e9; }
+.validation-panel h3, .warning-panel h3 { margin: 0 0 7px; font-size: 13px; }
+.validation-panel ul, .warning-panel ul { margin: 0; padding-left: 20px; }
+.workflow-actions { margin-top: 16px; }
+.proposal-pending { max-width: 1180px; margin: 0 auto 50px; padding: 20px 28px; color: #744f17; background: var(--amber-bg); border-radius: 8px; }
+.proposal-pending h2 { margin: 0 0 5px; font-size: 16px; }
+.proposal-pending p { margin: 0; font-size: 12px; }
+.commercial-proposal-document { margin: 28px auto 60px; background: white; border: 1px solid var(--line); border-radius: 8px; box-shadow: 0 10px 32px #1d302d0b; }
+.proposal-service { padding: 12px 0; border-bottom: 1px solid var(--line); }
+.proposal-service li { margin: 7px 0; }
+.proposal-service h4 { margin: 18px 0 8px; }
+.proposal-metrics { margin-top: 15px; font-size: 11px; }
+.public-price-summary { max-width: 520px; margin: 20px 0 0 auto; padding: 16px; background: #f3f6f4; border-radius: 7px; }
+.public-price-summary p { margin: 6px 0; }
+.public-price-summary h3 { margin: 14px 0 8px; color: var(--forest); font-size: 18px; }
+.proposal-signoff { margin-top: 38px; }
+@media (max-width: 780px) {
+  .commercial-entry, .commercial-line-heading { align-items: stretch; flex-direction: column; }
+  .commercial-entry .button { width: 100%; }
+  .proposal-page { padding: 22px 14px 48px; }
+  .commercial-settings, .commercial-alternatives, .commercial-price-panel { padding: 16px; }
+  .commercial-settings-grid, .service-picker, .commercial-line-grid, .deliverable-edit, .responsibility-columns, .metrics-grid, .scenario-grid, .commercial-totals { grid-template-columns: 1fr; }
+  .alternative-tabs { gap: 5px; }
+  .alternative-tabs button { padding: 9px 7px; font-size: 11px; }
+  .revision-row { align-items: stretch; flex-direction: column; }
+  .commercial-totals .total-row { grid-column: auto; }
+}
 @media print {
   @page { size: A4; margin: 16mm 15mm; }
   @page { @bottom-right { color: #66746d; font-size: 8pt; content: "Metamag Discovery · " counter(page); } }
@@ -537,6 +613,11 @@ input::placeholder, textarea::placeholder { color: #9aa59f; }
   .internal-document { padding: 0; }
   .internal-document .report-section { padding: 7mm 0; }
   .report-toolbar { display: none; }
+  .commercial-proposal-document { border: 0; box-shadow: none; }
+  .workspace-shell.combined-report { display: flex; flex-direction: column; }
+  .workspace-shell.combined-report .client-report { order: 1; }
+  .workspace-shell.combined-report .commercial-proposal-document { order: 2; break-before: page; }
+  .proposal-service, .public-price-summary { break-inside: avoid; }
 }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { scroll-behavior: auto !important; animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }
